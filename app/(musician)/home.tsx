@@ -1,14 +1,16 @@
 import { useState, useCallback } from 'react';
 import { View, FlatList, StyleSheet, RefreshControl, ScrollView, Pressable } from 'react-native';
 import { Text, ActivityIndicator, Chip, FAB, Portal, Modal, Button } from 'react-native-paper';
-import { useFocusEffect } from 'expo-router';
-import { Flame, MessageCircleQuestion, X } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Flame, TrendingUp, MessageCircleQuestion, X, Lock } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { Gig } from '@/lib/types';
 import { Colors, Spacing } from '@/constants/theme';
 import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
 import { MOCK_GIGS, TRENDING_PAY_THRESHOLD } from '@/constants/mockData';
 import { GigCard } from '@/components/GigCard';
+import { useAuthStore } from '@/stores/authStore';
 
 const STARTER_QUESTIONS = [
   'How do I apply for a gig?',
@@ -32,6 +34,10 @@ const BOT_ANSWERS: Record<string, string> = {
 };
 
 export default function MusicianHomeScreen() {
+  const router = useRouter();
+  const profile = useAuthStore((s) => s.profile);
+  const isPremium = profile?.account_tier === 'premium';
+
   const [allGigs, setAllGigs] = useState<Gig[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,6 +77,12 @@ export default function MusicianHomeScreen() {
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
   };
+
+  // Hot Gigs — top 3 by pay (shown in liquid glass banner)
+  const hotGigs = [...allGigs]
+    .filter(g => g.pay_offered != null)
+    .sort((a, b) => (b.pay_offered ?? 0) - (a.pay_offered ?? 0))
+    .slice(0, 3);
 
   // Derive trending gigs (high pay)
   const trendingGigs = allGigs.filter(
@@ -119,11 +131,61 @@ export default function MusicianHomeScreen() {
         ))}
       </ScrollView>
 
+      {/* Hot Gigs — liquid glass banner */}
+      {hotGigs.length > 0 && selectedInstruments.length === 0 && (
+        <View style={styles.hotGigsSection}>
+          {/* Cards rendered first — BlurView blurs whatever is behind it natively */}
+          {hotGigs.slice(0, 2).map((gig, i) => (
+            <View
+              key={gig.id}
+              pointerEvents="none"
+              style={[styles.hotBgCard, {
+                transform: [
+                  { rotate: i === 0 ? '-3deg' : '2.5deg' },
+                  { translateX: i === 0 ? -12 : 12 },
+                ],
+                top: i * 8,
+              }]}
+            >
+              <GigCard gig={gig} />
+            </View>
+          ))}
+
+          {/* Frosted glass overlay */}
+          <BlurView intensity={22} tint="light" style={StyleSheet.absoluteFillObject} />
+          <View style={[StyleSheet.absoluteFillObject, styles.glassTint]} />
+
+          {/* Content on glass */}
+          <View style={styles.hotGigsContent}>
+            <View style={styles.hotGigsHeader}>
+              <Flame size={24} color="#F97316" />
+              <Text variant="titleLarge" style={styles.hotGigsTitle}> Hot Gigs</Text>
+            </View>
+            <Text variant="bodyMedium" style={styles.hotGigsSubtitle}>
+              Highest-paying opportunities right now
+            </Text>
+          </View>
+
+          {!isPremium && (
+            <View style={[StyleSheet.absoluteFillObject, styles.padlockOverlay]}>
+              <Lock size={32} color={Colors.text} />
+              <Text variant="titleMedium" style={styles.padlockTitle}>Get Premium to unlock</Text>
+              <Pressable
+                style={styles.upgradeButton}
+                onPress={() => router.push('/(musician)/upgrade')}
+              >
+                <Text style={styles.upgradeButtonText}>Upgrade Now →</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Trending Section */}
       {trendingGigs.length > 0 && selectedInstruments.length === 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Flame size={20} color="#F97316" />
+            <TrendingUp size={20} color={Colors.primary} />
             <Text variant="titleMedium" style={styles.sectionTitle}> Trending</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
@@ -241,6 +303,40 @@ const styles = StyleSheet.create({
   filterChipText: { color: '#000000', fontSize: 13 },
   filterChipTextSelected: { color: '#1A1A1A' },
 
+  // Hot Gigs glass banner
+  hotGigsSection: {
+    height: 190,
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: Spacing.lg,
+  },
+  hotBgCard: {
+    position: 'absolute',
+    width: '92%',
+    left: '4%',
+  },
+  glassTint: {
+    backgroundColor: 'rgba(251, 249, 254, 0.38)',
+  },
+  hotGigsContent: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hotGigsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hotGigsTitle: {
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  hotGigsSubtitle: {
+    color: Colors.textSecondary,
+    marginTop: 6,
+  },
+
   // Sections
   section: { marginBottom: Spacing.lg },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
@@ -279,4 +375,29 @@ const styles = StyleSheet.create({
   questionLabel: { color: Colors.text, fontSize: 14, textAlign: 'left' },
   chatAnswerText: { color: Colors.text, lineHeight: 22 },
   backButton: { marginTop: Spacing.md },
+
+  // Padlock overlay
+  padlockOverlay: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(251, 249, 254, 0.82)',
+    borderRadius: 20,
+    gap: Spacing.sm,
+  },
+  upgradeButton: {
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+  },
+  upgradeButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  padlockTitle: {
+    color: Colors.text,
+    fontWeight: '600',
+  },
 });
