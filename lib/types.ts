@@ -14,6 +14,8 @@ export interface Profile {
   avatar_url: string | null;
   location_city: string;
   location_state: string;
+  location_address?: string;
+  account_tier: AccountTier;
   created_at: string;
 }
 
