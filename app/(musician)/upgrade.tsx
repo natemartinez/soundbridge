@@ -1,7 +1,8 @@
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Card, Chip, Divider } from 'react-native-paper';
+import { Text, Card, Button, Chip, Divider } from 'react-native-paper';
 import { Check } from 'lucide-react-native';
 import { useAuthStore } from '@/stores/authStore';
+import { useStripeUpgrade } from '@/components/useStripeUpgrade';
 import { Colors, Spacing } from '@/constants/theme';
 
 const BASIC_FEATURES = [
@@ -21,10 +22,10 @@ const PREMIUM_FEATURES = [
   'Hot Gigs — highest-paying opportunities',
 ];
 
-// Web fallback: Stripe PaymentSheet is native-only.
-// The full upgrade flow (upgrade.native.tsx) runs on iOS/Android.
 export default function UpgradeScreen() {
   const profile = useAuthStore((s) => s.profile);
+  const { loading, error, handleUpgrade, canUpgrade } = useStripeUpgrade();
+
   const isPremium = profile?.account_tier === 'premium';
 
   return (
@@ -34,6 +35,7 @@ export default function UpgradeScreen() {
         Get more gigs and stand out to churches
       </Text>
 
+      {/* Basic Tier */}
       <Card style={styles.card}>
         <Card.Content>
           <View style={styles.tierHeader}>
@@ -55,14 +57,19 @@ export default function UpgradeScreen() {
         </Card.Content>
       </Card>
 
+      {/* Premium Tier */}
       <Card style={[styles.card, styles.premiumCard]}>
         <Card.Content>
           <View style={styles.tierHeader}>
             <Text variant="titleLarge" style={styles.premiumTierName}>Premium</Text>
             {isPremium ? (
-              <Chip compact style={styles.activeBadge} textStyle={styles.activeBadgeText}>Active</Chip>
+              <Chip compact style={styles.activeBadge} textStyle={styles.activeBadgeText}>
+                Active
+              </Chip>
             ) : (
-              <Chip compact style={styles.popularBadge} textStyle={styles.popularBadgeText}>Most Popular</Chip>
+              <Chip compact style={styles.popularBadge} textStyle={styles.popularBadgeText}>
+                Most Popular
+              </Chip>
             )}
           </View>
           <View style={styles.priceRow}>
@@ -76,8 +83,22 @@ export default function UpgradeScreen() {
               <Text variant="bodyMedium" style={styles.featureText}>{feature}</Text>
             </View>
           ))}
+
           {isPremium ? (
             <Text style={styles.activeText}>You're on Premium. Enjoy Hot Gigs!</Text>
+          ) : canUpgrade ? (
+            <>
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              <Button
+                mode="contained"
+                style={styles.upgradeButton}
+                loading={loading}
+                disabled={loading}
+                onPress={handleUpgrade}
+              >
+                Upgrade to Premium
+              </Button>
+            </>
           ) : (
             <Text style={styles.webNote}>Open on iOS or Android to upgrade.</Text>
           )}
@@ -110,6 +131,8 @@ const styles = StyleSheet.create({
   divider: { marginVertical: Spacing.md },
   featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
   featureText: { color: Colors.text, marginLeft: Spacing.sm },
+  upgradeButton: { marginTop: Spacing.lg },
+  errorText: { color: Colors.error, marginTop: Spacing.sm, textAlign: 'center' },
   activeText: { color: Colors.success, marginTop: Spacing.lg, textAlign: 'center', fontWeight: '600' },
   webNote: { color: Colors.textSecondary, marginTop: Spacing.lg, textAlign: 'center', fontStyle: 'italic' },
 });
