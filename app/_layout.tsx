@@ -1,18 +1,19 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
-import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
+import { PaperProvider, MD3LightTheme } from 'react-native-paper';
+import { StripeProvider } from '@stripe/stripe-react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '@/stores/authStore';
 import { Colors } from '@/constants/theme';
 
 const theme = {
-  ...MD3DarkTheme,
+  ...MD3LightTheme,
   colors: {
-    ...MD3DarkTheme.colors,
+    ...MD3LightTheme.colors,
     primary: Colors.primary,
-    onPrimary: '#1A1A1A',
-    primaryContainer: Colors.primaryDark,
-    onPrimaryContainer: '#1A1A1A',
+    onPrimary: '#FFFFFF',
+    primaryContainer: Colors.chipBackground,
+    onPrimaryContainer: Colors.primaryDark,
     background: Colors.background,
     surface: Colors.surface,
     onSurface: Colors.text,
@@ -42,8 +43,10 @@ export default function RootLayout() {
   if (!initialized) return null;
 
   return (
-    <PaperProvider theme={theme}>
-      <Stack screenOptions={{ headerShown: false }} />
-    </PaperProvider>
+    <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
+      <PaperProvider theme={theme}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </PaperProvider>
+    </StripeProvider>
   );
 }
