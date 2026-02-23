@@ -174,6 +174,19 @@ create policy "Conversation participants can send messages"
 -- ============================================================
 
 -- 2026-02-23: Add premium subscription tier
+-- NOTE: Safe to run on both new and existing databases (IF NOT EXISTS is a no-op on fresh DBs).
 alter table public.profiles
-  add column if not exists account_tier text not null default 'basic'
-  check (account_tier in ('basic', 'premium'));
+  add column if not exists account_tier text not null default 'basic';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'profiles_account_tier_check'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_account_tier_check
+      check (account_tier in ('basic', 'premium'));
+  end if;
+end $$;
