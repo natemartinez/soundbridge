@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(export PATH=\"/home/swadaddy4life/.nvm/versions/node/v20.19.5/bin:$PATH\")",
+      "Bash(node:*)",
+      "Bash(npx expo customize:*)",
+      "Bash(npx expo install:*)",
+      "Bash(export PATH=\"/home/swadaddy4life/.local/share/pnpm:/home/swadaddy4life/.nvm/versions/node/v20.19.5/bin:$PATH\")",
+      "Bash(pnpm config set:*)"
+    ]
+  }
+}

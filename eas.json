@@ -1,0 +1,65 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "development"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "bundleIdentifier": "com.soundbridge.app",
+        "buildConfiguration": "Release"
+      },
+      "android": {
+        "bundleIdentifier": "com.soundbridge.app",
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "preview"
+      },
+      "channel": "preview"
+    },
+    "production": {
+      "ios": {
+        "bundleIdentifier": "com.soundbridge.app",
+        "buildConfiguration": "Release",
+        "autoIncrement": "buildNumber"
+      },
+      "android": {
+        "bundleIdentifier": "com.soundbridge.app",
+        "buildType": "app-bundle",
+        "autoIncrement": "versionCode"
+      },
+      "env": {
+        "APP_ENV": "production"
+      },
+      "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "",
+        "ascAppId": "",
+        "appleTeamId": ""
+      },
+      "android": {
+        "serviceAccountKeyPath": "",
+        "track": "internal"
+      }
+    }
+  }
+}
