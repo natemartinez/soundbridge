@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
-import { StripeProvider } from '@stripe/stripe-react-native';
+import { StripeWrapper } from '@/components/StripeWrapper';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '@/stores/authStore';
 import { Colors } from '@/constants/theme';
@@ -43,10 +43,10 @@ export default function RootLayout() {
   if (!initialized) return null;
 
   return (
-    <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}>
+    <StripeWrapper>
       <PaperProvider theme={theme}>
         <Stack screenOptions={{ headerShown: false }} />
       </PaperProvider>
-    </StripeProvider>
+    </StripeWrapper>
   );
 }
