@@ -13,6 +13,7 @@ Deno.serve(async (req) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, content-type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
       },
     });
   }
@@ -31,9 +32,18 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) throw new Error('Unauthorized');
 
+    // Validate user ID is a well-formed UUID to prevent query injection
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(user.id)) throw new Error('Invalid user ID format');
+
+    // Guard against missing publishable key
+    const publishableKey = Deno.env.get('STRIPE_PUBLISHABLE_KEY');
+    if (!publishableKey) throw new Error('Server misconfiguration: missing publishable key');
+
     // Find or create Stripe customer tied to Supabase user ID
     const existingCustomers = await stripe.customers.search({
       query: `metadata['supabase_user_id']:'${user.id}'`,
+      limit: 1,
     });
 
     let customer;
@@ -61,12 +71,14 @@ Deno.serve(async (req) => {
       automatic_payment_methods: { enabled: true },
     });
 
+    if (!paymentIntent.client_secret) throw new Error('Failed to create payment intent: missing client secret');
+
     return new Response(
       JSON.stringify({
         clientSecret: paymentIntent.client_secret,
         ephemeralKey: ephemeralKey.secret,
         customerId: customer.id,
-        publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+        publishableKey: publishableKey,
       }),
       {
         headers: {
@@ -76,7 +88,8 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    const message = error instanceof Error ? error.message : String(error);
+    return new Response(JSON.stringify({ error: message }), {
       status: 400,
       headers: {
         'Content-Type': 'application/json',
