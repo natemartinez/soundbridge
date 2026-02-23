@@ -6,7 +6,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 Deno.serve(async (req) => {
   const signature = req.headers.get('Stripe-Signature');
@@ -31,7 +31,12 @@ Deno.serve(async (req) => {
   }
 
   if (event.type === 'payment_intent.succeeded') {
-    const paymentIntent = event.data.object as Stripe.PaymentIntent;
+    const obj = event.data.object as { object: string } & Stripe.PaymentIntent;
+    if (obj.object !== 'payment_intent') {
+      console.error('Unexpected object type in payment_intent.succeeded', { type: obj.object });
+      return new Response('Unexpected object type', { status: 400 });
+    }
+    const paymentIntent = obj;
     const supabaseUserId = paymentIntent.metadata?.supabase_user_id;
 
     if (!supabaseUserId) {
@@ -52,7 +57,8 @@ Deno.serve(async (req) => {
     const { error } = await supabase
       .from('profiles')
       .update({ account_tier: 'premium' })
-      .eq('id', supabaseUserId);
+      .eq('id', supabaseUserId)
+      .eq('account_tier', 'basic');
 
     if (error) {
       console.error('Failed to update account_tier:', error);
