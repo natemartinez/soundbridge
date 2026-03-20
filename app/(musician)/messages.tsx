@@ -14,10 +14,12 @@ export default function MusicianMessagesScreen() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     try {
+      setFetchError(null);
       const snapshot = await firestore()
         .collection('conversations')
         .where('participants', 'array-contains', user.uid)
@@ -27,19 +29,19 @@ export default function MusicianMessagesScreen() {
         (d) => ({ id: d.id, ...d.data() } as Conversation)
       );
 
-      // Sort by last_message_at descending, nulls last
       docs.sort((a, b) => {
-        if (!a.last_message_at && !b.last_message_at) return 0;
-        if (!a.last_message_at) return 1;
-        if (!b.last_message_at) return -1;
-        return b.last_message_at.localeCompare(a.last_message_at);
+        const timeA = new Date(a.last_message_at ?? a.created_at ?? 0).getTime();
+        const timeB = new Date(b.last_message_at ?? b.created_at ?? 0).getTime();
+        return timeB - timeA;
       });
 
       setConversations(docs);
+    } catch {
+      setFetchError('Failed to load messages. Pull down to retry.');
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (user) {
@@ -47,7 +49,7 @@ export default function MusicianMessagesScreen() {
     } else {
       setLoading(false);
     }
-  }, [user?.uid]);
+  }, [user?.uid, fetchConversations]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -82,6 +84,17 @@ export default function MusicianMessagesScreen() {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (!loading && fetchError) {
+    return (
+      <View style={styles.centered}>
+        <Text variant="bodyMedium" style={styles.errorText}>{fetchError}</Text>
+        <Button mode="outlined" onPress={fetchConversations} style={{ marginTop: 12 }}>
+          Retry
+        </Button>
       </View>
     );
   }
@@ -173,6 +186,11 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: Spacing.sm,
+  },
+  errorText: {
+    color: Colors.error,
+    textAlign: 'center',
+    marginBottom: 8,
   },
 
   // Row
