@@ -1,75 +1,70 @@
-import { useState, useCallback } from 'react';
-import { View, FlatList, StyleSheet, RefreshControl, ScrollView, Pressable } from 'react-native';
-import { Text, ActivityIndicator, Chip, FAB, Portal, Modal, Button } from 'react-native-paper';
+import { useState, useEffect } from 'react';
+import { View, FlatList, StyleSheet, RefreshControl, ScrollView, Pressable, Linking, ActivityIndicator } from 'react-native';
+import { Text, Chip, Portal, Modal, Button } from 'react-native-paper';
 import { BlurView } from 'expo-blur';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { Flame, TrendingUp, MessageCircleQuestion, X, Lock } from 'lucide-react-native';
-import { supabase } from '@/lib/supabase';
+import { useRouter } from 'expo-router';
+import { Flame, TrendingUp, PlusCircle, Lock, Check } from 'lucide-react-native';
 import { Gig } from '@/lib/types';
 import { Colors, Spacing } from '@/constants/theme';
 import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
-import { MOCK_GIGS, TRENDING_PAY_THRESHOLD } from '@/constants/mockData';
 import { GigCard } from '@/components/GigCard';
+import { useGigPayment } from '@/components/useGigPayment';
+import { firestore } from '@/lib/firebase';
 import { useAuthStore } from '@/stores/authStore';
 
-const STARTER_QUESTIONS = [
-  'How do I apply for a gig?',
-  'What instruments are most in demand?',
-  'How does the payment process work?',
-  'How do I set up my musician profile?',
-  'What is OnSpace Premium?',
-];
-
-const BOT_ANSWERS: Record<string, string> = {
-  'How do I apply for a gig?':
-    'Browse the Gigs tab and tap on any gig that interests you. You\'ll see the church\'s profile and can reach out to express interest. In a future update, there will be a one-tap "Apply" button!',
-  'What instruments are most in demand?':
-    'Guitars, keys, and vocalists are the most requested instruments on OnSpace. Audio techs are also in high demand — churches often struggle to find skilled sound engineers.',
-  'How does the payment process work?':
-    'Payment is agreed upon directly between you and the church. The listed pay is what the church is offering per service. OnSpace doesn\'t process payments — we just connect you.',
-  'How do I set up my musician profile?':
-    'Sign up and complete the onboarding flow. You\'ll add your instruments, experience level, rate, and location. A complete profile helps churches find you!',
-  'What is OnSpace Premium?':
-    'Premium ($9.99/mo) gives you unlimited gig applications, priority in search results, direct messaging, a profile badge, and early access to new gigs. Check the Upgrade tab!',
-};
+const TRENDING_PAY_THRESHOLD = 250;
 
 export default function MusicianHomeScreen() {
   const router = useRouter();
-  const profile = useAuthStore((s) => s.profile);
-  const isPremium = profile?.account_tier === 'premium';
+  const { user, profile } = useAuthStore();
+  const isPremium = false;
 
   const [allGigs, setAllGigs] = useState<Gig[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedInstruments, setSelectedInstruments] = useState<InstrumentKey[]>([]);
-  const [chatVisible, setChatVisible] = useState(false);
-  const [chatAnswer, setChatAnswer] = useState('');
+  const [appliedGigs, setAppliedGigs] = useState<Gig[]>([]);
+  const [applyModalGig, setApplyModalGig] = useState<Gig | null>(null);
+  const [applyConfirmed, setApplyConfirmed] = useState(false);
+  const [paidGigIds, setPaidGigIds] = useState<Set<string>>(new Set());
+  const { loading: gigPaymentLoading, error: gigPaymentError, handleGigPayment } = useGigPayment();
 
   const fetchGigs = async () => {
-    const { data, error } = await supabase
-      .from('gigs')
-      .select('*, church:profiles!gigs_church_id_fkey(*)')
-      .eq('status', 'open')
-      .order('created_at', { ascending: false });
-
-    if (!error && data && data.length > 0) {
-      setAllGigs(data as Gig[]);
-    } else {
-      setAllGigs(MOCK_GIGS);
+    try {
+      const snapshot = await firestore()
+        .collection('gigs')
+        .where('active', '==', true)
+        .get();
+      const gigs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }) as Gig)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
+      setAllGigs(gigs);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    setRefreshing(false);
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchGigs();
-    }, [])
-  );
+  const fetchAppliedGigs = async () => {
+    if (!user) return;
+    const snapshot = await firestore()
+      .collection('applications')
+      .where('musician_id', '==', user.uid)
+      .get();
+    setAppliedGigs(snapshot.docs.map(doc => doc.data().gig_snapshot as Gig));
+  };
 
-  const onRefresh = () => {
-    setRefreshing(true);
+  useEffect(() => {
     fetchGigs();
+  }, []);
+
+  useEffect(() => {
+    if (user) fetchAppliedGigs();
+  }, [user?.uid]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchGigs();
+    setRefreshing(false);
   };
 
   const toggleInstrument = (key: InstrumentKey) => {
@@ -78,43 +73,128 @@ export default function MusicianHomeScreen() {
     );
   };
 
-  // Hot Gigs — top 3 by pay (shown in liquid glass banner)
   const hotGigs = [...allGigs]
     .filter(g => g.pay_offered != null)
     .sort((a, b) => (b.pay_offered ?? 0) - (a.pay_offered ?? 0))
     .slice(0, 3);
 
-  // Derive trending gigs (high pay)
   const trendingGigs = allGigs.filter(
     (g) => g.pay_offered != null && g.pay_offered >= TRENDING_PAY_THRESHOLD
   );
 
-  // Filter gigs by selected instruments
-  const filteredGigs = selectedInstruments.length > 0
-    ? allGigs.filter((g) =>
-        selectedInstruments.some((inst) => g.instruments_needed.includes(inst))
-      )
-    : allGigs;
+  const filteredGigs = allGigs.filter((g) => {
+    if (selectedInstruments.length > 0) {
+      return selectedInstruments.some((inst) => (g.instruments_needed ?? []).includes(inst));
+    }
+    return true;
+  });
 
-  // Recommended = soonest upcoming gigs (sorted by date)
   const recommendedGigs = [...allGigs]
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 3);
 
-  const handleQuestion = (question: string) => {
-    setChatAnswer(BOT_ANSWERS[question] ?? 'Sorry, I don\'t have an answer for that yet.');
+  const handleSimulatePayment = async (gig: Gig) => {
+    const success = await handleGigPayment(gig);
+    if (success) {
+      setPaidGigIds((prev) => new Set(prev).add(gig.id));
+    }
   };
 
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
+  const handleApplyPress = (gig: Gig) => {
+    setApplyModalGig(gig);
+    setApplyConfirmed(false);
+  };
+
+  const handleConfirmApply = async () => {
+    if (!applyModalGig) return;
+    setApplyConfirmed(true);
+    setAppliedGigs((prev) => [...prev.filter((g) => g.id !== applyModalGig.id), applyModalGig]);
+    if (user) {
+      firestore().collection('applications').add({
+        gig_id: applyModalGig.id,
+        musician_id: user.uid,
+        gig_snapshot: applyModalGig,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      }).catch(() => {});
+    }
+    if (user && applyModalGig) {
+      firestore().collection('conversations').add({
+        participants: [user.uid, applyModalGig.church_id],
+        gig_id: applyModalGig.id,
+        gig_title: applyModalGig.title,
+        musician_id: user.uid,
+        poster_id: applyModalGig.church_id,
+        musician_name: profile?.display_name ?? user.email ?? 'Musician',
+        poster_name: applyModalGig.church?.display_name ?? 'Church',
+        last_message: null,
+        last_message_at: null,
+        created_at: new Date().toISOString(),
+      }).catch(() => {});
+    }
+  };
+
+  const appliedGigIds = new Set(appliedGigs.map((g) => g.id));
 
   const renderHeader = () => (
     <View>
+      {/* Page Title + Post a Gig Button */}
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Gig Worship</Text>
+        <Pressable style={styles.postGigButton} onPress={() => router.push('/(musician)/post-gig')}>
+          <PlusCircle size={16} color={Colors.primary} />
+          <Text style={styles.postGigButtonText}>Post a Gig</Text>
+        </Pressable>
+      </View>
+
+      {/* Applied Gig Roadmap */}
+      {appliedGigs.map((gig) => {
+        const isPaid = paidGigIds.has(gig.id);
+        return (
+          <View key={`roadmap-${gig.id}`} style={styles.roadmapCard}>
+            <Text variant="titleSmall" style={styles.roadmapGigTitle} numberOfLines={1}>{gig.title}</Text>
+            {gig.church && (
+              <Text variant="bodySmall" style={styles.roadmapChurch}>{gig.church.display_name}</Text>
+            )}
+            <View style={styles.roadmapTrack}>
+              <View style={styles.roadmapStep}>
+                <View style={[styles.roadmapDot, styles.roadmapDotDone]} />
+                <Text style={styles.roadmapStepLabel}>Applied</Text>
+              </View>
+              <View style={[styles.roadmapLine, styles.roadmapLineDone]} />
+              <View style={styles.roadmapStep}>
+                <View style={[styles.roadmapDot, isPaid ? styles.roadmapDotDone : styles.roadmapDotActive]} />
+                <Text style={[styles.roadmapStepLabel, isPaid ? undefined : styles.roadmapStepLabelActive]}>
+                  {isPaid ? 'Paid' : 'Payment\npending'}
+                </Text>
+              </View>
+              <View style={[styles.roadmapLine, isPaid ? styles.roadmapLineDone : styles.roadmapLineInactive]} />
+              <View style={styles.roadmapStep}>
+                <View style={[styles.roadmapDot, isPaid ? styles.roadmapDotDone : styles.roadmapDotInactive]} />
+                <Text style={[styles.roadmapStepLabel, isPaid ? undefined : styles.roadmapStepLabelInactive]}>
+                  Accepted
+                </Text>
+              </View>
+            </View>
+
+            {__DEV__ && !isPaid && (
+              <Pressable
+                style={styles.devPayButton}
+                onPress={() => handleSimulatePayment(gig)}
+                disabled={gigPaymentLoading}
+              >
+                <Text style={styles.devPayButtonText}>
+                  {gigPaymentLoading ? 'Processing...' : `DEV: Simulate Church Payment — $${gig.pay_offered}`}
+                </Text>
+              </Pressable>
+            )}
+            {gigPaymentError && !isPaid ? (
+              <Text style={styles.devPayError}>{gigPaymentError}</Text>
+            ) : null}
+          </View>
+        );
+      })}
+
       {/* Instrument Filters */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
         {INSTRUMENTS.map((inst) => (
@@ -134,45 +214,41 @@ export default function MusicianHomeScreen() {
       {/* Hot Gigs — liquid glass banner */}
       {hotGigs.length > 0 && selectedInstruments.length === 0 && (
         <View style={styles.hotGigsSection}>
-          {/* Cards rendered first — BlurView blurs whatever is behind it natively */}
-          {hotGigs.slice(0, 2).map((gig, i) => (
-            <View
-              key={gig.id}
-              pointerEvents="none"
-              style={[styles.hotBgCard, {
-                transform: [
-                  { rotate: i === 0 ? '-3deg' : '2.5deg' },
-                  { translateX: i === 0 ? -12 : 12 },
-                ],
-                top: i * 8,
-              }]}
-            >
-              <GigCard gig={gig} />
-            </View>
-          ))}
-
-          {/* Frosted glass overlay */}
-          <BlurView intensity={22} tint="light" style={StyleSheet.absoluteFillObject} />
-          <View style={[StyleSheet.absoluteFillObject, styles.glassTint]} />
-
-          {/* Content on glass */}
-          <View style={styles.hotGigsContent}>
-            <View style={styles.hotGigsHeader}>
-              <Flame size={24} color="#F97316" />
-              <Text variant="titleLarge" style={styles.hotGigsTitle}> Hot Gigs</Text>
-            </View>
-            <Text variant="bodyMedium" style={styles.hotGigsSubtitle}>
-              Highest-paying opportunities right now
-            </Text>
+          <View pointerEvents="none" style={styles.hotCarousel}>
+            {hotGigs.map((gig) => (
+              <View key={gig.id} style={styles.hotCarouselCard}>
+                <GigCard gig={gig} />
+              </View>
+            ))}
           </View>
 
-          {!isPremium && (
+          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFillObject} />
+          <View style={[StyleSheet.absoluteFillObject, styles.glassTint]} />
+
+          {isPremium ? (
+            <View style={styles.hotGigsContent}>
+              <View style={styles.hotGigsHeader}>
+                <Flame size={24} color="#F97316" />
+                <Text variant="titleLarge" style={styles.hotGigsTitle}> Hot Gigs</Text>
+              </View>
+              <Text variant="bodyMedium" style={styles.hotGigsSubtitle}>
+                Highest-paying opportunities right now. Be the first.
+              </Text>
+            </View>
+          ) : (
             <View style={[StyleSheet.absoluteFillObject, styles.padlockOverlay]}>
               <Lock size={32} color={Colors.text} />
               <Text variant="titleMedium" style={styles.padlockTitle}>Get Premium to unlock</Text>
+              <View style={styles.hotGigsHeader}>
+                <Flame size={24} color="#F97316" />
+                <Text variant="titleLarge" style={styles.hotGigsTitle}> Hot Gigs</Text>
+              </View>
+              <Text variant="bodySmall" style={styles.padlockSubtitle}>
+                Highest-paying opportunities right now. Be the first.
+              </Text>
               <Pressable
                 style={styles.upgradeButton}
-                onPress={() => router.push('/(musician)/upgrade')}
+                onPress={() => router.push('/(auth)/login')}
               >
                 <Text style={styles.upgradeButtonText}>Upgrade Now →</Text>
               </Pressable>
@@ -186,12 +262,12 @@ export default function MusicianHomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <TrendingUp size={20} color={Colors.primary} />
-            <Text variant="titleMedium" style={styles.sectionTitle}> Trending</Text>
+            <Text variant="titleLarge" style={styles.sectionTitle}> Trending</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
             {trendingGigs.map((gig) => (
               <View key={gig.id} style={styles.trendingCard}>
-                <GigCard gig={gig} />
+                <GigCard gig={gig} isApplied={appliedGigIds.has(gig.id)} onApply={() => handleApplyPress(gig)} />
               </View>
             ))}
           </ScrollView>
@@ -201,26 +277,33 @@ export default function MusicianHomeScreen() {
       {/* Recommended Section */}
       {recommendedGigs.length > 0 && selectedInstruments.length === 0 && (
         <View style={styles.section}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Recommended for You</Text>
+          <Text variant="titleLarge" style={styles.sectionTitle}>Recommended for You</Text>
           {recommendedGigs.map((gig) => (
-            <GigCard key={`rec-${gig.id}`} gig={gig} />
+            <GigCard key={`rec-${gig.id}`} gig={gig} isApplied={appliedGigIds.has(gig.id)} onApply={() => handleApplyPress(gig)} />
           ))}
         </View>
       )}
 
-      {/* All Gigs / Filtered Results Header */}
       <Text variant="titleMedium" style={styles.sectionTitle}>
         {selectedInstruments.length > 0 ? 'Filtered Gigs' : 'All Gigs'}
       </Text>
     </View>
   );
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <FlatList
         data={filteredGigs}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <GigCard gig={item} />}
+        renderItem={({ item }) => <GigCard gig={item} isApplied={appliedGigIds.has(item.id)} onApply={() => handleApplyPress(item)} />}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -228,59 +311,54 @@ export default function MusicianHomeScreen() {
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text variant="titleMedium" style={styles.emptyText}>No gigs match your filters</Text>
+            <Text variant="titleMedium" style={styles.emptyText}>
+              {selectedInstruments.length > 0 ? 'No gigs match your filters' : 'No gigs posted yet'}
+            </Text>
             <Text variant="bodyMedium" style={styles.emptySubtext}>
-              Try selecting different instruments
+              {selectedInstruments.length > 0 ? 'Try selecting different instruments' : 'Be the first to post a gig!'}
             </Text>
           </View>
         }
       />
 
-      {/* Help Chatbot FAB */}
-      <FAB
-        icon={() => <MessageCircleQuestion size={24} color="#1A1A1A" />}
-        style={styles.fab}
-        onPress={() => { setChatVisible(true); setChatAnswer(''); }}
-        color="#1A1A1A"
-      />
-
-      {/* Chatbot Modal */}
+      {/* Apply Modal */}
       <Portal>
-        <Modal visible={chatVisible} onDismiss={() => setChatVisible(false)} contentContainerStyle={styles.chatModal}>
-          <View style={styles.chatHeader}>
-            <Text variant="titleMedium" style={styles.chatTitle}>Help & FAQ</Text>
-            <Pressable onPress={() => setChatVisible(false)}>
-              <X size={24} color={Colors.textSecondary} />
-            </Pressable>
-          </View>
-
-          {!chatAnswer ? (
+        <Modal
+          visible={!!applyModalGig}
+          onDismiss={() => setApplyModalGig(null)}
+          contentContainerStyle={styles.applyModal}
+        >
+          {!applyConfirmed ? (
             <>
-              <Text variant="bodyMedium" style={styles.chatSubtitle}>
-                What can I help you with?
+              <Text variant="titleMedium" style={styles.applyModalTitle}>Apply for Gig</Text>
+              <Text variant="titleSmall" style={styles.applyModalGigName} numberOfLines={2}>
+                {applyModalGig?.title}
               </Text>
-              {STARTER_QUESTIONS.map((q) => (
-                <Button
-                  key={q}
-                  mode="outlined"
-                  onPress={() => handleQuestion(q)}
-                  style={styles.questionButton}
-                  labelStyle={styles.questionLabel}
-                  compact
-                >
-                  {q}
-                </Button>
-              ))}
+              <Text style={styles.applyModalPay}>${applyModalGig?.pay_offered}</Text>
+              <Text variant="bodySmall" style={styles.applyModalNote}>
+                Before applying, make sure your payment details are up to date so you can receive payment when accepted.
+              </Text>
+              <Pressable
+                style={styles.paymentLinkButton}
+                onPress={() => Linking.openURL('https://dashboard.stripe.com/settings/payouts')}
+              >
+                <Text style={styles.paymentLinkText}>Review Payment Method →</Text>
+              </Pressable>
+              <Button mode="contained" style={styles.confirmApplyButton} onPress={handleConfirmApply}>
+                Confirm Application
+              </Button>
             </>
           ) : (
             <>
-              <Text variant="bodyMedium" style={styles.chatAnswerText}>{chatAnswer}</Text>
-              <Button
-                mode="text"
-                onPress={() => setChatAnswer('')}
-                style={styles.backButton}
-              >
-                Ask another question
+              <View style={styles.successIcon}>
+                <Check size={30} color="#FFFFFF" />
+              </View>
+              <Text variant="titleMedium" style={styles.applySuccessTitle}>Application Sent!</Text>
+              <Text variant="bodyMedium" style={styles.applySuccessText}>
+                You'll be notified when the church accepts your application.
+              </Text>
+              <Button mode="contained" style={styles.confirmApplyButton} onPress={() => setApplyModalGig(null)}>
+                Done
               </Button>
             </>
           )}
@@ -295,7 +373,23 @@ const styles = StyleSheet.create({
   center: { justifyContent: 'center', alignItems: 'center' },
   list: { padding: Spacing.md },
 
-  // Filters
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text },
+  postGigButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.chipBackground,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  postGigButtonText: {
+    color: Colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
   filterScroll: { marginBottom: Spacing.md },
   filterContent: { gap: Spacing.xs },
   filterChip: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
@@ -303,101 +397,120 @@ const styles = StyleSheet.create({
   filterChipText: { color: '#000000', fontSize: 13 },
   filterChipTextSelected: { color: '#1A1A1A' },
 
-  // Hot Gigs glass banner
   hotGigsSection: {
-    height: 190,
+    height: 220,
     borderRadius: 20,
     overflow: 'hidden',
+    marginTop: Spacing.md,
     marginBottom: Spacing.lg,
   },
-  hotBgCard: {
-    position: 'absolute',
-    width: '92%',
-    left: '4%',
+  hotCarousel: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
   },
-  glassTint: {
-    backgroundColor: 'rgba(251, 249, 254, 0.38)',
-  },
+  hotCarouselCard: { width: 270 },
+  glassTint: { backgroundColor: 'rgba(251, 249, 254, 0.08)' },
   hotGigsContent: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  hotGigsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  hotGigsTitle: {
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  hotGigsSubtitle: {
-    color: Colors.textSecondary,
-    marginTop: 6,
-  },
+  hotGigsHeader: { flexDirection: 'row', alignItems: 'center' },
+  hotGigsTitle: { fontWeight: 'bold', color: Colors.text, fontSize: 22 },
+  hotGigsSubtitle: { color: Colors.textSecondary, marginTop: 6 },
 
-  // Sections
   section: { marginBottom: Spacing.lg },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
   sectionTitle: { fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.sm },
 
-  // Trending horizontal scroll
   horizontalList: { gap: Spacing.md, paddingRight: Spacing.md },
   trendingCard: { width: 300 },
 
-  // Empty
   empty: { alignItems: 'center', paddingTop: Spacing.xl * 3 },
   emptyText: { color: Colors.text },
   emptySubtext: { color: Colors.textSecondary, marginTop: Spacing.sm },
 
-  // FAB
-  fab: {
-    position: 'absolute',
-    right: Spacing.lg,
-    bottom: Spacing.lg,
-    backgroundColor: Colors.primary,
-    borderRadius: 28,
+  padlockOverlay: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(251, 249, 254, 0.42)',
+    borderRadius: 20,
+    gap: Spacing.sm,
   },
+  padlockSubtitle: {
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  upgradeButton: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+  },
+  upgradeButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 },
+  padlockTitle: { color: Colors.text, fontWeight: '600' },
 
-  // Chat Modal
-  chatModal: {
+  roadmapCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+  },
+  roadmapGigTitle: { fontWeight: '600', color: Colors.text },
+  roadmapChurch: { color: Colors.textSecondary, marginTop: 2, marginBottom: Spacing.md },
+  roadmapTrack: { flexDirection: 'row', alignItems: 'flex-start' },
+  roadmapStep: { alignItems: 'center', width: 72 },
+  roadmapDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 5 },
+  roadmapDotDone: { backgroundColor: Colors.success },
+  roadmapDotActive: { backgroundColor: Colors.primary, width: 14, height: 14, borderRadius: 7 },
+  roadmapDotInactive: { backgroundColor: Colors.border },
+  roadmapLine: { flex: 1, height: 2, marginTop: 5 },
+  roadmapLineDone: { backgroundColor: Colors.success },
+  roadmapLineInactive: { backgroundColor: Colors.border },
+  roadmapStepLabel: { fontSize: 10, color: Colors.text, textAlign: 'center' },
+  roadmapStepLabelActive: { color: Colors.primary, fontWeight: '600' },
+  roadmapStepLabelInactive: { color: Colors.textSecondary },
+
+  applyModal: {
     backgroundColor: Colors.surface,
     margin: Spacing.lg,
     padding: Spacing.lg,
     borderRadius: 16,
-    maxHeight: '80%',
   },
-  chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
-  chatTitle: { fontWeight: 'bold', color: Colors.text },
-  chatSubtitle: { color: Colors.textSecondary, marginBottom: Spacing.md },
-  questionButton: { marginBottom: Spacing.sm, borderColor: Colors.border, alignItems: 'flex-start' },
-  questionLabel: { color: Colors.text, fontSize: 14, textAlign: 'left' },
-  chatAnswerText: { color: Colors.text, lineHeight: 22 },
-  backButton: { marginTop: Spacing.md },
-
-  // Padlock overlay
-  padlockOverlay: {
-    justifyContent: 'center',
+  applyModalTitle: { fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.sm },
+  applyModalGigName: { color: Colors.text, marginBottom: 4 },
+  applyModalPay: { color: Colors.success, fontWeight: 'bold', fontSize: 18, marginBottom: Spacing.md },
+  applyModalNote: { color: Colors.textSecondary, lineHeight: 18, marginBottom: Spacing.md },
+  paymentLinkButton: { paddingVertical: Spacing.sm, marginBottom: Spacing.xs },
+  paymentLinkText: { color: Colors.primary, fontWeight: '500' },
+  confirmApplyButton: { marginTop: Spacing.sm },
+  successIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.success,
     alignItems: 'center',
-    backgroundColor: 'rgba(251, 249, 254, 0.82)',
-    borderRadius: 20,
-    gap: Spacing.sm,
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
   },
-  upgradeButton: {
-    marginTop: Spacing.xs,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.primary,
-    borderRadius: 20,
+  applySuccessTitle: { fontWeight: 'bold', color: Colors.text, textAlign: 'center', marginBottom: Spacing.sm },
+  applySuccessText: { color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.lg },
+
+  devPayButton: {
+    marginTop: Spacing.sm,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
   },
-  upgradeButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  padlockTitle: {
-    color: Colors.text,
-    fontWeight: '600',
-  },
+  devPayButtonText: { color: '#1A1A1A', fontWeight: '600', fontSize: 13 },
+  devPayError: { color: '#EF4444', fontSize: 12, marginTop: 4 },
 });
