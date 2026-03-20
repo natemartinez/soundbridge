@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Text, ActivityIndicator, Chip, Button } from 'react-native-paper';
+import { Text, ActivityIndicator, Chip, Button, Avatar } from 'react-native-paper';
 import { useLocalSearchParams } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { firestore } from '@/lib/firebase';
 import { Profile, MusicianDetails, ChurchDetails } from '@/lib/types';
 import { INSTRUMENTS } from '@/constants/instruments';
 import { Colors, Spacing } from '@/constants/theme';
@@ -15,35 +15,26 @@ export default function PublicProfileScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!id) return;
+
+    // Live Firestore path
     const fetchPublicProfile = async () => {
-      if (!id) return;
+      try {
+        const doc = await firestore().collection('users').doc(id).get();
 
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .single();
+        if (doc.exists) {
+          const data = doc.data()!;
+          setProfile({ id, ...data } as Profile);
 
-      if (profileData) {
-        setProfile(profileData as Profile);
-
-        if (profileData.role === 'musician') {
-          const { data } = await supabase
-            .from('musician_details')
-            .select('*')
-            .eq('id', id)
-            .single();
-          if (data) setMusicianDetails(data as MusicianDetails);
-        } else {
-          const { data } = await supabase
-            .from('church_details')
-            .select('*')
-            .eq('id', id)
-            .single();
-          if (data) setChurchDetails(data as ChurchDetails);
+          if (data.role === 'musician' && data.musician_details) {
+            setMusicianDetails({ id, ...data.musician_details } as MusicianDetails);
+          } else if (data.church_details) {
+            setChurchDetails({ id, ...data.church_details } as ChurchDetails);
+          }
         }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchPublicProfile();
@@ -65,23 +56,71 @@ export default function PublicProfileScreen() {
     );
   }
 
+  const denomination = churchDetails?.denomination;
+  const worshipStyle = churchDetails?.worship_style;
+  const congregationSize = churchDetails?.congregation_size;
+
+  const initials = (profile.display_name ?? '?')
+    .split(' ')
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text variant="headlineMedium" style={styles.name}>{profile.display_name}</Text>
-      <Text variant="bodySmall" style={styles.role}>
-        {profile.role === 'musician' ? 'Musician' : 'Church'}
-      </Text>
-      <Text variant="bodyMedium" style={styles.location}>
-        {profile.location_city}{profile.location_state ? `, ${profile.location_state}` : ''}
-      </Text>
-      {profile.bio ? <Text variant="bodyMedium" style={styles.bio}>{profile.bio}</Text> : null}
 
+      {/* ── Header: avatar + name + location ── */}
+      <View style={styles.header}>
+        <Avatar.Text
+          size={72}
+          label={initials}
+          style={styles.avatar}
+          labelStyle={styles.avatarLabel}
+        />
+        <Text variant="headlineSmall" style={styles.name}>{profile.display_name}</Text>
+        {(profile.location_city || profile.location_state) && (
+          <Text variant="bodySmall" style={styles.location}>
+            {[profile.location_city, profile.location_state].filter(Boolean).join(', ')}
+          </Text>
+        )}
+      </View>
+
+      {/* ── Church identity chips ── */}
+      {(denomination || worshipStyle || congregationSize) && (
+        <View style={styles.identityRow}>
+          {denomination && (
+            <View style={styles.identityChip}>
+              <Text style={styles.identityChipText}>{denomination}</Text>
+            </View>
+          )}
+          {worshipStyle && (
+            <View style={styles.identityChip}>
+              <Text style={styles.identityChipText}>{worshipStyle}</Text>
+            </View>
+          )}
+          {congregationSize && (
+            <View style={styles.identityChip}>
+              <Text style={styles.identityChipText}>{congregationSize}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* ── Bio ── */}
+      {!!profile.bio && (
+        <View style={styles.section}>
+          <Text variant="bodyMedium" style={styles.bio}>{profile.bio}</Text>
+        </View>
+      )}
+
+      {/* ── Musician-specific details ── */}
       {musicianDetails && (
-        <>
+        <View style={styles.section}>
           <View style={styles.chips}>
             {(musicianDetails.instruments ?? []).map((key) => {
               const label = INSTRUMENTS.find((i) => i.key === key)?.label ?? key;
-              return <Chip key={key} compact>{label}</Chip>;
+              return <Chip key={key} compact style={styles.chip} textStyle={styles.chipText}>{label}</Chip>;
             })}
           </View>
           <Text variant="bodyMedium" style={styles.detail}>
@@ -95,15 +134,7 @@ export default function PublicProfileScreen() {
           <Text variant="bodyMedium" style={styles.detail}>
             {musicianDetails.available ? 'Available for gigs' : 'Not currently available'}
           </Text>
-        </>
-      )}
-
-      {churchDetails && (
-        <>
-          <Text variant="bodyMedium" style={styles.detail}>Denomination: {churchDetails.denomination}</Text>
-          <Text variant="bodyMedium" style={styles.detail}>Worship Style: {churchDetails.worship_style}</Text>
-          <Text variant="bodyMedium" style={styles.detail}>Congregation Size: {churchDetails.congregation_size}</Text>
-        </>
+        </View>
       )}
 
       <Button mode="outlined" disabled style={styles.messageButton}>
@@ -116,12 +147,30 @@ export default function PublicProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { justifyContent: 'center', alignItems: 'center' },
-  content: { padding: Spacing.lg },
-  name: { fontWeight: 'bold', color: Colors.text },
-  role: { color: Colors.primary, marginTop: Spacing.xs, textTransform: 'capitalize' },
-  location: { color: Colors.textSecondary, marginTop: Spacing.xs },
-  bio: { color: Colors.text, marginTop: Spacing.md },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.md },
+  content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
+
+  // Header
+  header: { alignItems: 'center', marginBottom: Spacing.lg },
+  avatar: { backgroundColor: Colors.primary, marginBottom: Spacing.sm },
+  avatarLabel: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 26 },
+  name: { fontWeight: 'bold', color: Colors.text, textAlign: 'center' },
+  location: { color: Colors.textSecondary, marginTop: Spacing.xs, textAlign: 'center' },
+
+  // Identity chips
+  identityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, justifyContent: 'center', marginBottom: Spacing.lg },
+  identityChip: { backgroundColor: Colors.chipBackground, paddingHorizontal: Spacing.sm, paddingVertical: 5, borderRadius: 20 },
+  identityChipText: { color: Colors.chipText, fontSize: 12, fontWeight: '500' },
+
+  // Sections
+  section: { marginBottom: Spacing.lg },
+  sectionTitle: { color: Colors.text, fontWeight: '700', marginBottom: Spacing.md },
+  bio: { color: Colors.textSecondary, lineHeight: 22 },
+
+  // Musician details
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginBottom: Spacing.sm },
+  chip: { backgroundColor: Colors.chipBackground },
+  chipText: { fontSize: 12, color: Colors.chipText },
   detail: { color: Colors.text, marginTop: Spacing.sm },
-  messageButton: { marginTop: Spacing.xl },
+
+  messageButton: { marginTop: Spacing.md },
 });
