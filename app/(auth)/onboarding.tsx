@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, TextInput, Button, HelperText, Checkbox, SegmentedButtons } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
-import { supabase } from '@/lib/supabase';
+import { firestore } from '@/lib/firebase';
 import { Colors, Spacing } from '@/constants/theme';
 import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
 import { WorshipStyle, CongregationSize } from '@/lib/types';
@@ -55,43 +55,33 @@ export default function OnboardingScreen() {
     setError('');
 
     try {
-      // Update profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          display_name: displayName.trim(),
-          bio: bio.trim(),
-          location_city: city.trim(),
-          location_state: state.trim(),
-        })
-        .eq('id', profile.id);
+      const userRef = firestore().collection('users').doc(profile.id);
 
-      if (profileError) throw profileError;
+      // Update profile + embed role-specific details in one write
+      const updates: Record<string, unknown> = {
+        display_name: displayName.trim(),
+        bio: bio.trim(),
+        location_city: city.trim(),
+        location_state: state.trim(),
+      };
 
-      // Insert role-specific details
       if (role === 'musician') {
-        const { error: detailsError } = await supabase
-          .from('musician_details')
-          .upsert({
-            id: profile.id,
-            instruments,
-            experience_years: parseInt(experienceYears) || 0,
-            available: true,
-            rate_per_service: ratePerService ? parseFloat(ratePerService) : null,
-          });
-        if (detailsError) throw detailsError;
+        updates.musician_details = {
+          instruments,
+          experience_years: parseInt(experienceYears) || 0,
+          available: true,
+          rate_per_service: ratePerService ? parseFloat(ratePerService) : null,
+        };
       } else {
-        const { error: detailsError } = await supabase
-          .from('church_details')
-          .upsert({
-            id: profile.id,
-            denomination: denomination.trim(),
-            worship_style: worshipStyle,
-            congregation_size: congregationSize,
-            website_url: null,
-          });
-        if (detailsError) throw detailsError;
+        updates.church_details = {
+          denomination: denomination.trim(),
+          worship_style: worshipStyle,
+          congregation_size: congregationSize,
+          website_url: null,
+        };
       }
+
+      await userRef.update(updates);
 
       // Refresh profile in store
       await fetchProfile();
@@ -100,7 +90,7 @@ export default function OnboardingScreen() {
       if (role === 'musician') {
         router.replace('/(musician)/home');
       } else {
-        router.replace('/(church)/home');
+        router.replace('/(musician)/home');
       }
     } catch (e: any) {
       setError(e.message ?? 'Failed to save profile');
