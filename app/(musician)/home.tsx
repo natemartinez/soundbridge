@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, FlatList, StyleSheet, RefreshControl, ScrollView, Pressable, Linking, ActivityIndicator } from 'react-native';
+import { View, FlatList, StyleSheet, RefreshControl, ScrollView, Pressable, Linking, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Text, Chip, Portal, Modal, Button } from 'react-native-paper';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
@@ -18,6 +18,9 @@ export default function MusicianHomeScreen() {
   const router = useRouter();
   const { user, profile } = useAuthStore();
   const isPremium = false;
+  const { width: screenWidth } = useWindowDimensions();
+  // Carousel card width: narrower than full screen so the next card peeks
+  const carouselCardWidth = screenWidth - Spacing.md * 5;
 
   const [allGigs, setAllGigs] = useState<Gig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,11 +150,23 @@ export default function MusicianHomeScreen() {
         </Pressable>
       </View>
 
-      {/* Applied Gig Roadmap */}
+      {/* Applied Gig Roadmap — single card or horizontal carousel */}
+      {appliedGigs.length > 0 && (
+        <ScrollView
+          horizontal={appliedGigs.length > 1}
+          scrollEnabled={appliedGigs.length > 1}
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={appliedGigs.length > 1 ? carouselCardWidth + Spacing.sm : undefined}
+          decelerationRate="fast"
+          contentContainerStyle={appliedGigs.length > 1 ? styles.carouselContent : undefined}
+        >
       {appliedGigs.map((gig) => {
         const isPaid = paidGigIds.has(gig.id);
         return (
-          <View key={`roadmap-${gig.id}`} style={styles.roadmapCard}>
+          <View
+            key={`roadmap-${gig.id}`}
+            style={[styles.roadmapCard, appliedGigs.length > 1 && { width: carouselCardWidth }]}
+          >
             <Text variant="titleSmall" style={styles.roadmapGigTitle} numberOfLines={1}>{gig.title}</Text>
             {gig.church && (
               <Text variant="bodySmall" style={styles.roadmapChurch}>{gig.church.display_name}</Text>
@@ -194,6 +209,8 @@ export default function MusicianHomeScreen() {
           </View>
         );
       })}
+        </ScrollView>
+      )}
 
       {/* Instrument Filters */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
@@ -519,6 +536,7 @@ const styles = StyleSheet.create({
   },
   devPayButtonText: { color: '#1A1A1A', fontWeight: '600', fontSize: 13 },
   devPayError: { color: '#EF4444', fontSize: 12, marginTop: 4 },
+  carouselContent: { paddingHorizontal: Spacing.md, gap: Spacing.sm },
   skeletonCard: {
     backgroundColor: Colors.surface,
     borderRadius: 12,
