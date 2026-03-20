@@ -163,7 +163,6 @@ const styles = StyleSheet.create({
 
   // Sections
   section: { marginBottom: Spacing.lg },
-  sectionTitle: { color: Colors.text, fontWeight: '700', marginBottom: Spacing.md },
   bio: { color: Colors.textSecondary, lineHeight: 22 },
 
   // Musician details
