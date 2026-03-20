@@ -214,10 +214,16 @@ export default function MusicianHomeScreen() {
       {/* Hot Gigs — liquid glass banner */}
       {hotGigs.length > 0 && selectedInstruments.length === 0 && (
         <View style={styles.hotGigsSection}>
+          {/* Skeleton placeholders — same shape as GigCards but no real data */}
           <View pointerEvents="none" style={styles.hotCarousel}>
-            {hotGigs.map((gig) => (
-              <View key={gig.id} style={styles.hotCarouselCard}>
-                <GigCard gig={gig} />
+            {hotGigs.map((_, i) => (
+              <View key={i} style={styles.hotCarouselCard}>
+                <View style={styles.skeletonCard}>
+                  <View style={styles.skeletonTitle} />
+                  <View style={styles.skeletonSubtitle} />
+                  <View style={styles.skeletonRow} />
+                  <View style={styles.skeletonPay} />
+                </View>
               </View>
             ))}
           </View>
@@ -513,4 +519,14 @@ const styles = StyleSheet.create({
   },
   devPayButtonText: { color: '#1A1A1A', fontWeight: '600', fontSize: 13 },
   devPayError: { color: '#EF4444', fontSize: 12, marginTop: 4 },
+  skeletonCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  skeletonTitle: { height: 14, borderRadius: 6, backgroundColor: Colors.border, width: '70%' },
+  skeletonSubtitle: { height: 11, borderRadius: 5, backgroundColor: Colors.border, width: '45%' },
+  skeletonRow: { height: 11, borderRadius: 5, backgroundColor: Colors.border, width: '55%' },
+  skeletonPay: { height: 20, borderRadius: 8, backgroundColor: Colors.border, width: '30%', marginTop: 4 },
 });
