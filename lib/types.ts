@@ -57,3 +57,25 @@ export interface MusicianWithDetails extends Profile {
 export interface ChurchWithDetails extends Profile {
   church_details: ChurchDetails;
 }
+
+export interface Conversation {
+  id: string;
+  participants: string[];
+  gig_id: string;
+  gig_title: string;
+  musician_id: string;
+  poster_id: string;
+  musician_name: string;
+  poster_name: string;
+  last_message: string;
+  last_message_at: string;
+  created_at: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  text: string;
+  created_at: string;
+}
