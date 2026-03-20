@@ -26,26 +26,23 @@ const formatTime = (d: Date) => {
 
 export default function PostGigScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
 
+  // Compute once: today at the current hour, minutes zeroed — drives all three defaults
+  const nowAtHour = (() => { const d = new Date(); d.setMinutes(0, 0, 0); return d; })();
+
+  const [pickerDate, setPickerDate] = useState(nowAtHour);
   const [title, setTitle] = useState('');
-  const [churchName, setChurchName] = useState('');
+  const [churchName, setChurchName] = useState(profile?.display_name ?? '');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [instruments, setInstruments] = useState<InstrumentKey[]>([]);
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [date, setDate] = useState(formatDate(nowAtHour));
+  const [time, setTime] = useState(formatTime(nowAtHour));
   const [pay, setPay] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-
-  // Shared Date object backing both pickers; starts at today, rounded to next hour
-  const [pickerDate, setPickerDate] = useState(() => {
-    const d = new Date();
-    d.setMinutes(0, 0, 0);
-    return d;
-  });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
