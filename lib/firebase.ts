@@ -80,11 +80,14 @@ export const firestore = () => ({
         constraints.push(firestoreOrderBy(field, direction));
         return builder;
       },
-      onSnapshot: (callback: (snap: { docs: { id: string; data: () => any }[] }) => void) => {
+      onSnapshot: (
+        callback: (snap: { docs: { id: string; data: () => any }[] }) => void,
+        onError?: (error: Error) => void
+      ) => {
         const q = constraints.length > 0 ? query(colRef, ...constraints) : colRef;
         return firestoreOnSnapshot(q as any, (snap) => {
           callback({ docs: snap.docs.map((d) => ({ id: d.id, data: () => d.data() })) });
-        });
+        }, onError);
       },
     };
 

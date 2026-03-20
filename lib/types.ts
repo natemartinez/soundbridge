@@ -61,14 +61,14 @@ export interface ChurchWithDetails extends Profile {
 export interface Conversation {
   id: string;
   participants: string[];
-  gig_id: string;
-  gig_title: string;
+  gig_id?: string;
+  gig_title?: string;
   musician_id: string;
   poster_id: string;
   musician_name: string;
   poster_name: string;
-  last_message: string;
-  last_message_at: string;
+  last_message: string | null;
+  last_message_at: string | null;
   created_at: string;
 }
 
