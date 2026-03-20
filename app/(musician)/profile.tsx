@@ -1,174 +1,253 @@
-import { useState, useCallback } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
-import { Text, Button, Chip, Switch, TextInput, HelperText } from 'react-native-paper';
-import { useFocusEffect } from 'expo-router';
-import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/stores/authStore';
-import { MusicianDetails } from '@/lib/types';
-import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
+import { useState } from 'react';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Text, Button, Chip, Portal, Modal, TextInput, Checkbox } from 'react-native-paper';
+import { router } from 'expo-router';
+import { User, MapPin } from 'lucide-react-native';
 import { Colors, Spacing } from '@/constants/theme';
+import { useAuthStore } from '@/stores/authStore';
+import { firestore } from '@/lib/firebase';
+import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
 
 export default function MusicianProfileScreen() {
+  const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const fetchProfile = useAuthStore((s) => s.fetchProfile);
 
-  const [details, setDetails] = useState<MusicianDetails | null>(null);
-  const [editing, setEditing] = useState(false);
-
-  // Editable fields
-  const [displayName, setDisplayName] = useState('');
-  const [bio, setBio] = useState('');
-  const [instruments, setInstruments] = useState<InstrumentKey[]>([]);
-  const [experienceYears, setExperienceYears] = useState('');
-  const [ratePerService, setRatePerService] = useState('');
-  const [available, setAvailable] = useState(true);
-  const [error, setError] = useState('');
+  const [editVisible, setEditVisible] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const loadDetails = async () => {
-    if (!profile) return;
-    const { data } = await supabase
-      .from('musician_details')
-      .select('*')
-      .eq('id', profile.id)
-      .single();
+  // Edit form fields
+  const [displayName, setDisplayName] = useState('');
+  const [bio, setBio] = useState('');
+  const [city, setCity] = useState('');
+  const [stateName, setStateName] = useState('');
+  const [selectedInstruments, setSelectedInstruments] = useState<InstrumentKey[]>([]);
+  const [ratePerService, setRatePerService] = useState('');
 
-    if (data) {
-      setDetails(data as MusicianDetails);
-      setDisplayName(profile.display_name);
-      setBio(profile.bio);
-      setInstruments(data.instruments ?? []);
-      setExperienceYears(String(data.experience_years ?? 0));
-      setRatePerService(data.rate_per_service != null ? String(data.rate_per_service) : '');
-      setAvailable(data.available ?? true);
-    }
+  const openEdit = () => {
+    setDisplayName(profile?.display_name ?? '');
+    setBio(profile?.bio ?? '');
+    setCity(profile?.location_city ?? '');
+    setStateName(profile?.location_state ?? '');
+
+    const details = (profile as any)?.musician_details;
+    setSelectedInstruments(details?.instruments ?? []);
+    setRatePerService(
+      details?.rate_per_service != null ? String(details.rate_per_service) : ''
+    );
+
+    setEditVisible(true);
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadDetails();
-    }, [profile?.id])
-  );
-
   const toggleInstrument = (key: InstrumentKey) => {
-    setInstruments((prev) =>
+    setSelectedInstruments((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
   };
 
   const handleSave = async () => {
-    if (!profile) return;
+    if (!user) return;
     setSaving(true);
-    setError('');
-
     try {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ display_name: displayName.trim(), bio: bio.trim() })
-        .eq('id', profile.id);
-      if (profileError) throw profileError;
+      const updates: Record<string, any> = {
+        display_name: displayName.trim(),
+        bio: bio.trim(),
+        location_city: city.trim(),
+        location_state: stateName.trim(),
+      };
 
-      const { error: detailsError } = await supabase
-        .from('musician_details')
-        .update({
-          instruments,
-          experience_years: parseInt(experienceYears) || 0,
-          rate_per_service: ratePerService ? parseFloat(ratePerService) : null,
-          available,
-        })
-        .eq('id', profile.id);
-      if (detailsError) throw detailsError;
+      if (profile?.role === 'musician') {
+        updates['musician_details.instruments'] = selectedInstruments;
+        updates['musician_details.rate_per_service'] =
+          ratePerService.trim() !== '' ? Number(ratePerService.trim()) : null;
+      }
 
+      await firestore().collection('users').doc(user.uid).update(updates);
       await fetchProfile();
-      setEditing(false);
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to save');
+      setEditVisible(false);
     } finally {
       setSaving(false);
     }
   };
 
-  if (!profile || !details) {
+  if (!user) {
     return (
-      <View style={[styles.container, styles.center]}>
-        <Text>Loading...</Text>
+      <View style={styles.container}>
+        <View style={styles.centered}>
+          <User size={64} color={Colors.textSecondary} />
+          <Text variant="headlineSmall" style={styles.title}>Your Profile</Text>
+          <Text variant="bodyMedium" style={styles.subtitle}>
+            Sign in to create your musician profile, add your instruments, and start applying for gigs.
+          </Text>
+          <Button mode="contained" onPress={() => router.push('/(auth)/login')} style={styles.button}>
+            Sign In to Get Started
+          </Button>
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {editing ? (
-        <>
-          <TextInput label="Display Name" value={displayName} onChangeText={setDisplayName} mode="outlined" style={styles.input} />
-          <TextInput label="Bio" value={bio} onChangeText={setBio} mode="outlined" multiline style={styles.input} />
-          <Text variant="titleMedium" style={styles.sectionTitle}>Instruments</Text>
-          <View style={styles.chips}>
-            {INSTRUMENTS.map((inst) => (
-              <Chip key={inst.key} selected={instruments.includes(inst.key)} onPress={() => toggleInstrument(inst.key)} compact>
-                {inst.label}
-              </Chip>
-            ))}
+    <>
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.avatarRow}>
+          <View style={styles.avatar}>
+            <User size={40} color={Colors.primary} />
           </View>
-          <TextInput label="Years of Experience" value={experienceYears} onChangeText={setExperienceYears} keyboardType="numeric" mode="outlined" style={styles.input} />
-          <TextInput label="Rate per Service ($)" value={ratePerService} onChangeText={setRatePerService} keyboardType="numeric" mode="outlined" style={styles.input} />
-          <View style={styles.switchRow}>
-            <Text variant="bodyLarge">Available for gigs</Text>
-            <Switch value={available} onValueChange={setAvailable} />
+          <View style={styles.nameBlock}>
+            <Text variant="headlineSmall" style={styles.displayName}>
+              {profile?.display_name || 'Your Profile'}
+            </Text>
+            {(profile?.location_city || profile?.location_state) && (
+              <View style={styles.locationRow}>
+                <MapPin size={14} color={Colors.textSecondary} />
+                <Text variant="bodySmall" style={styles.location}>
+                  {[profile.location_city, profile.location_state].filter(Boolean).join(', ')}
+                </Text>
+              </View>
+            )}
           </View>
-          {error ? <HelperText type="error">{error}</HelperText> : null}
-          <View style={styles.buttonRow}>
-            <Button mode="outlined" onPress={() => setEditing(false)} style={styles.flex}>Cancel</Button>
-            <View style={styles.spacer} />
-            <Button mode="contained" onPress={handleSave} loading={saving} style={styles.flex}>Save</Button>
-          </View>
-        </>
-      ) : (
-        <>
-          <Text variant="headlineMedium" style={styles.name}>{profile.display_name}</Text>
-          <Text variant="bodyMedium" style={styles.location}>
-            {profile.location_city}{profile.location_state ? `, ${profile.location_state}` : ''}
-          </Text>
-          {profile.bio ? <Text variant="bodyMedium" style={styles.bio}>{profile.bio}</Text> : null}
-
-          <View style={styles.chips}>
-            {(details.instruments ?? []).map((key) => {
-              const label = INSTRUMENTS.find((i) => i.key === key)?.label ?? key;
-              return <Chip key={key} compact>{label}</Chip>;
-            })}
-          </View>
-
-          <Text variant="bodyMedium" style={styles.detail}>Experience: {details.experience_years} years</Text>
-          {details.rate_per_service != null && (
-            <Text variant="bodyMedium" style={styles.detail}>Rate: ${details.rate_per_service}/service</Text>
+          {profile?.account_tier === 'premium' && (
+            <Chip style={styles.premiumChip} textStyle={styles.premiumChipText}>Premium</Chip>
           )}
-          <Text variant="bodyMedium" style={styles.detail}>
-            Status: {details.available ? 'Available' : 'Not available'}
-          </Text>
+        </View>
 
-          <Button mode="contained" onPress={() => setEditing(true)} style={styles.editButton}>
-            Edit Profile
-          </Button>
-        </>
-      )}
-    </ScrollView>
+        <Button mode="outlined" onPress={openEdit} style={styles.editButton}>
+          Edit Profile
+        </Button>
+
+        {profile?.bio ? (
+          <View style={styles.section}>
+            <Text variant="titleSmall" style={styles.sectionLabel}>Bio</Text>
+            <Text variant="bodyMedium" style={styles.bioText}>{profile.bio}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.section}>
+          <Text variant="titleSmall" style={styles.sectionLabel}>Email</Text>
+          <Text variant="bodyMedium" style={styles.infoText}>{user.email}</Text>
+        </View>
+      </ScrollView>
+
+      <Portal>
+        <Modal
+          visible={editVisible}
+          onDismiss={() => setEditVisible(false)}
+          contentContainerStyle={styles.modalContainer}
+        >
+          <Text variant="titleLarge" style={styles.modalTitle}>Edit Profile</Text>
+          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
+            <TextInput
+              label="Display Name"
+              value={displayName}
+              onChangeText={setDisplayName}
+              mode="outlined"
+              style={styles.input}
+            />
+            <TextInput
+              label="Bio"
+              value={bio}
+              onChangeText={setBio}
+              mode="outlined"
+              multiline
+              numberOfLines={3}
+              style={styles.input}
+            />
+            <TextInput
+              label="City"
+              value={city}
+              onChangeText={setCity}
+              mode="outlined"
+              style={styles.input}
+            />
+            <TextInput
+              label="State"
+              value={stateName}
+              onChangeText={setStateName}
+              mode="outlined"
+              style={styles.input}
+            />
+
+            {profile?.role === 'musician' && (
+              <>
+                <Text variant="titleSmall" style={styles.sectionLabel}>Instruments</Text>
+                {INSTRUMENTS.map((inst) => (
+                  <Checkbox.Item
+                    key={inst.key}
+                    label={inst.label}
+                    status={selectedInstruments.includes(inst.key as InstrumentKey) ? 'checked' : 'unchecked'}
+                    onPress={() => toggleInstrument(inst.key as InstrumentKey)}
+                  />
+                ))}
+
+                <TextInput
+                  label="Rate per Service ($)"
+                  value={ratePerService}
+                  onChangeText={setRatePerService}
+                  mode="outlined"
+                  keyboardType="numeric"
+                  style={styles.input}
+                />
+              </>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <Button
+              mode="outlined"
+              onPress={() => setEditVisible(false)}
+              style={styles.modalButton}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleSave}
+              style={styles.modalButton}
+              loading={saving}
+              disabled={saving}
+            >
+              Save
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  center: { justifyContent: 'center', alignItems: 'center' },
-  content: { padding: Spacing.lg },
-  name: { fontWeight: 'bold', color: Colors.text },
-  location: { color: Colors.textSecondary, marginTop: Spacing.xs },
-  bio: { color: Colors.text, marginTop: Spacing.md },
-  sectionTitle: { marginTop: Spacing.md, marginBottom: Spacing.sm, fontWeight: '600' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.md },
-  detail: { color: Colors.text, marginTop: Spacing.sm },
-  editButton: { marginTop: Spacing.lg },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.lg },
+  scrollContent: { padding: Spacing.lg },
+  title: { fontWeight: 'bold', color: Colors.text, marginTop: Spacing.lg },
+  subtitle: { color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm, marginBottom: Spacing.lg, lineHeight: 22 },
+  button: { marginTop: Spacing.sm },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.chipBackground, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
+  nameBlock: { flex: 1 },
+  displayName: { fontWeight: 'bold', color: Colors.text },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  location: { color: Colors.textSecondary },
+  premiumChip: { backgroundColor: Colors.primary },
+  premiumChipText: { color: '#FFFFFF', fontSize: 11 },
+  editButton: { marginBottom: Spacing.xl },
+  section: { marginBottom: Spacing.lg },
+  sectionLabel: { fontWeight: '600', color: Colors.textSecondary, marginBottom: Spacing.xs },
+  bioText: { color: Colors.text, lineHeight: 22 },
+  infoText: { color: Colors.text },
+  // Modal
+  modalContainer: {
+    backgroundColor: Colors.background,
+    margin: Spacing.lg,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    maxHeight: '85%',
+  },
+  modalTitle: { fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.md },
+  modalScroll: { flexGrow: 0 },
   input: { marginBottom: Spacing.md },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: Spacing.md },
-  buttonRow: { flexDirection: 'row', marginTop: Spacing.lg },
-  flex: { flex: 1 },
-  spacer: { width: Spacing.sm },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.sm, marginTop: Spacing.md },
+  modalButton: { minWidth: 90 },
 });
