@@ -15,6 +15,7 @@ export default function MusicianProfileScreen() {
 
   const [editVisible, setEditVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Edit form fields
   const [displayName, setDisplayName] = useState('');
@@ -30,12 +31,13 @@ export default function MusicianProfileScreen() {
     setCity(profile?.location_city ?? '');
     setStateName(profile?.location_state ?? '');
 
-    const details = (profile as any)?.musician_details;
+    const details = profile?.musician_details;
     setSelectedInstruments(details?.instruments ?? []);
     setRatePerService(
       details?.rate_per_service != null ? String(details.rate_per_service) : ''
     );
 
+    setSaveError(null);
     setEditVisible(true);
   };
 
@@ -59,12 +61,14 @@ export default function MusicianProfileScreen() {
       if (profile?.role === 'musician') {
         updates['musician_details.instruments'] = selectedInstruments;
         updates['musician_details.rate_per_service'] =
-          ratePerService.trim() !== '' ? Number(ratePerService.trim()) : null;
+          ratePerService.trim() !== '' && !isNaN(Number(ratePerService.trim())) ? Number(ratePerService.trim()) : null;
       }
 
       await firestore().collection('users').doc(user.uid).update(updates);
       await fetchProfile();
       setEditVisible(false);
+    } catch {
+      setSaveError('Failed to save. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -192,6 +196,8 @@ export default function MusicianProfileScreen() {
             )}
           </ScrollView>
 
+          {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
+
           <View style={styles.modalActions}>
             <Button
               mode="outlined"
@@ -250,4 +256,5 @@ const styles = StyleSheet.create({
   input: { marginBottom: Spacing.md },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.sm, marginTop: Spacing.md },
   modalButton: { minWidth: 90 },
+  saveError: { color: Colors.error, marginTop: Spacing.sm, fontSize: 14 },
 });

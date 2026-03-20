@@ -17,6 +17,8 @@ export interface Profile {
   location_address?: string;
   account_tier: AccountTier;
   created_at: string;
+  musician_details?: MusicianDetails;
+  church_details?: ChurchDetails;
 }
 
 export interface MusicianDetails {
