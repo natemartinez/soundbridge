@@ -140,7 +140,7 @@ export default function MusicianHomeScreen() {
     <View>
       {/* Page Title + Post a Gig Button */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Gig Worship</Text>
+        <Text style={styles.headerTitle}>SoundBridge</Text>
         <Pressable style={styles.postGigButton} onPress={() => router.push('/(musician)/post-gig')}>
           <PlusCircle size={16} color={Colors.primary} />
           <Text style={styles.postGigButtonText}>Post a Gig</Text>
@@ -184,7 +184,7 @@ export default function MusicianHomeScreen() {
                 disabled={gigPaymentLoading}
               >
                 <Text style={styles.devPayButtonText}>
-                  {gigPaymentLoading ? 'Processing...' : `DEV: Simulate Church Payment — $${gig.pay_offered}`}
+                  {gigPaymentLoading ? 'Processing...' : `Test Payment — $${gig.pay_offered}`}
                 </Text>
               </Pressable>
             )}
