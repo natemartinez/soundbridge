@@ -58,6 +58,8 @@ export default function MusicianLayout() {
                   case 'settings': icon = <Settings size={iconSize} color={color} />; break;
                 }
 
+                if (icon === null) return null;
+
                 return (
                   <Pressable key={route.key} style={styles.tabItem} onPress={onPress}>
                     {icon}

@@ -53,7 +53,17 @@ export default function MusicianHomeScreen() {
       .collection('applications')
       .where('musician_id', '==', user.uid)
       .get();
-    setAppliedGigs(snapshot.docs.map(doc => doc.data().gig_snapshot as Gig));
+    const gigs: Gig[] = [];
+    const paid = new Set<string>();
+    snapshot.docs.forEach(doc => {
+      const data = doc.data() as Record<string, any>;
+      if (data.gig_snapshot) {
+        gigs.push(data.gig_snapshot as Gig);
+        if (data.status === 'paid') paid.add(data.gig_snapshot.id);
+      }
+    });
+    setAppliedGigs(gigs);
+    setPaidGigIds(paid);
   };
 
   useEffect(() => {
