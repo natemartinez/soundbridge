@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button, Chip, Portal, Modal, TextInput, Checkbox } from 'react-native-paper';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { User, MapPin } from 'lucide-react-native';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Spacing, TAB_BAR_HEIGHT } from '@/constants/theme';
 import { useAuthStore } from '@/stores/authStore';
 import { firestore } from '@/lib/firebase';
 import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
@@ -12,6 +13,7 @@ export default function MusicianProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const fetchProfile = useAuthStore((s) => s.fetchProfile);
+  const { bottom: bottomInset } = useSafeAreaInsets();
 
   const [editVisible, setEditVisible] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -93,7 +95,7 @@ export default function MusicianProfileScreen() {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.scrollContent, { paddingBottom: TAB_BAR_HEIGHT + bottomInset }]}>
         <View style={styles.avatarRow}>
           <View style={styles.avatar}>
             <User size={40} color={Colors.primary} />

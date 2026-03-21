@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, FlatList, StyleSheet, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle } from 'lucide-react-native';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Spacing, TAB_BAR_HEIGHT } from '@/constants/theme';
 import { useAuthStore } from '@/stores/authStore';
 import { firestore } from '@/lib/firebase';
 import { Conversation } from '@/lib/types';
 
 export default function MusicianMessagesScreen() {
   const user = useAuthStore((s) => s.user);
+  const { bottom: bottomInset } = useSafeAreaInsets();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,7 +140,7 @@ export default function MusicianMessagesScreen() {
         data={conversations}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : undefined}
+        contentContainerStyle={[conversations.length === 0 ? styles.emptyContainer : undefined, { paddingBottom: TAB_BAR_HEIGHT + bottomInset }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

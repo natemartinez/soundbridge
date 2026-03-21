@@ -1,12 +1,14 @@
 export const Colors = {
-  primary: '#FFD60A',
-  primaryDark: '#E6C009',
-  secondary: '#FF6584',
-  background: '#1A1A1A',
-  surface: '#2A2A2A',
-  text: '#F5F5F5',
-  textSecondary: '#9CA3AF',
-  border: '#3A3A3A',
+  primary: '#9B59B6',
+  primaryDark: '#7D3C98',
+  secondary: '#C39BD3',
+  background: '#FBF9FE',
+  surface: '#FFFFFF',
+  text: '#2D1B4E',
+  textSecondary: '#7B6B8D',
+  border: '#E8DDEF',
+  chipBackground: '#F0E6F6',
+  chipText: '#7D3C98',
   success: '#10B981',
   warning: '#F59E0B',
   error: '#EF4444',
@@ -19,3 +21,5 @@ export const Spacing = {
   lg: 24,
   xl: 32,
 };
+
+export const TAB_BAR_HEIGHT = 60;

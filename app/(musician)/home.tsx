@@ -1,23 +1,21 @@
 import { useState, useEffect } from 'react';
-import { View, FlatList, StyleSheet, RefreshControl, ScrollView, Pressable, Linking, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, FlatList, StyleSheet, RefreshControl, ScrollView, Pressable, Linking, ActivityIndicator, useWindowDimensions, TextInput } from 'react-native';
 import { Text, Chip, Portal, Modal, Button } from 'react-native-paper';
-import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { Flame, TrendingUp, PlusCircle, Lock, Check } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PlusCircle, Check } from 'lucide-react-native';
 import { Gig } from '@/lib/types';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Spacing, TAB_BAR_HEIGHT } from '@/constants/theme';
 import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
 import { GigCard } from '@/components/GigCard';
 import { useGigPayment } from '@/components/useGigPayment';
 import { firestore } from '@/lib/firebase';
 import { useAuthStore } from '@/stores/authStore';
 
-const TRENDING_PAY_THRESHOLD = 250;
-
 export default function MusicianHomeScreen() {
   const router = useRouter();
   const { user, profile } = useAuthStore();
-  const isPremium = false;
+  const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   // Carousel card width: narrower than full screen so the next card peeks
   const carouselCardWidth = screenWidth - Spacing.md * 5;
@@ -30,6 +28,8 @@ export default function MusicianHomeScreen() {
   const [applyModalGig, setApplyModalGig] = useState<Gig | null>(null);
   const [applyConfirmed, setApplyConfirmed] = useState(false);
   const [paidGigIds, setPaidGigIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [cancelConfirmGigId, setCancelConfirmGigId] = useState<string | null>(null);
   const { loading: gigPaymentLoading, error: gigPaymentError, handleGigPayment } = useGigPayment();
 
   const fetchGigs = async () => {
@@ -39,7 +39,7 @@ export default function MusicianHomeScreen() {
         .where('active', '==', true)
         .get();
       const gigs = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }) as Gig)
+        .map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) }) as Gig)
         .sort((a, b) => b.created_at.localeCompare(a.created_at));
       setAllGigs(gigs);
     } finally {
@@ -86,16 +86,30 @@ export default function MusicianHomeScreen() {
     );
   };
 
-  const hotGigs = [...allGigs]
-    .filter(g => g.pay_offered != null)
-    .sort((a, b) => (b.pay_offered ?? 0) - (a.pay_offered ?? 0))
-    .slice(0, 3);
+  const appliedGigIds = new Set(appliedGigs.map((g) => g.id));
 
-  const trendingGigs = allGigs.filter(
-    (g) => g.pay_offered != null && g.pay_offered >= TRENDING_PAY_THRESHOLD
-  );
+  const cancelApplication = async (gigId: string) => {
+    if (!user) return;
+    setCancelConfirmGigId(null);
+    setAppliedGigs(prev => prev.filter(g => g.id !== gigId));
+    firestore()
+      .collection('applications')
+      .where('gig_id', '==', gigId)
+      .where('musician_id', '==', user.uid)
+      .get()
+      .then(snap => { snap.docs.forEach(d => d.ref.delete()); })
+      .catch(() => {});
+  };
 
   const filteredGigs = allGigs.filter((g) => {
+    if (appliedGigIds.has(g.id)) return false;
+    const q = searchQuery.toLowerCase().trim();
+    if (q) {
+      const inTitle = g.title?.toLowerCase().includes(q);
+      const inDescription = g.description?.toLowerCase().includes(q);
+      const inChurch = g.church?.display_name?.toLowerCase().includes(q);
+      if (!inTitle && !inDescription && !inChurch) return false;
+    }
     if (selectedInstruments.length > 0) {
       return selectedInstruments.some((inst) => (g.instruments_needed ?? []).includes(inst));
     }
@@ -103,6 +117,7 @@ export default function MusicianHomeScreen() {
   });
 
   const recommendedGigs = [...allGigs]
+    .filter((g) => !appliedGigIds.has(g.id))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 3);
 
@@ -147,8 +162,6 @@ export default function MusicianHomeScreen() {
     }
   };
 
-  const appliedGigIds = new Set(appliedGigs.map((g) => g.id));
-
   const renderHeader = () => (
     <View>
       {/* Page Title + Post a Gig Button */}
@@ -160,67 +173,16 @@ export default function MusicianHomeScreen() {
         </Pressable>
       </View>
 
-      {/* Applied Gig Roadmap — single card or horizontal carousel */}
-      {appliedGigs.length > 0 && (
-        <ScrollView
-          horizontal={appliedGigs.length > 1}
-          scrollEnabled={appliedGigs.length > 1}
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={appliedGigs.length > 1 ? carouselCardWidth + Spacing.sm : undefined}
-          decelerationRate="fast"
-          contentContainerStyle={appliedGigs.length > 1 ? styles.carouselContent : undefined}
-        >
-      {appliedGigs.map((gig) => {
-        const isPaid = paidGigIds.has(gig.id);
-        return (
-          <View
-            key={`roadmap-${gig.id}`}
-            style={[styles.roadmapCard, appliedGigs.length > 1 && { width: carouselCardWidth }]}
-          >
-            <Text variant="titleSmall" style={styles.roadmapGigTitle} numberOfLines={1}>{gig.title}</Text>
-            {gig.church && (
-              <Text variant="bodySmall" style={styles.roadmapChurch}>{gig.church.display_name}</Text>
-            )}
-            <View style={styles.roadmapTrack}>
-              <View style={styles.roadmapStep}>
-                <View style={[styles.roadmapDot, styles.roadmapDotDone]} />
-                <Text style={styles.roadmapStepLabel}>Applied</Text>
-              </View>
-              <View style={[styles.roadmapLine, styles.roadmapLineDone]} />
-              <View style={styles.roadmapStep}>
-                <View style={[styles.roadmapDot, isPaid ? styles.roadmapDotDone : styles.roadmapDotActive]} />
-                <Text style={[styles.roadmapStepLabel, isPaid ? undefined : styles.roadmapStepLabelActive]}>
-                  {isPaid ? 'Paid' : 'Payment\npending'}
-                </Text>
-              </View>
-              <View style={[styles.roadmapLine, isPaid ? styles.roadmapLineDone : styles.roadmapLineInactive]} />
-              <View style={styles.roadmapStep}>
-                <View style={[styles.roadmapDot, isPaid ? styles.roadmapDotDone : styles.roadmapDotInactive]} />
-                <Text style={[styles.roadmapStepLabel, isPaid ? undefined : styles.roadmapStepLabelInactive]}>
-                  Accepted
-                </Text>
-              </View>
-            </View>
-
-            {__DEV__ && !isPaid && (
-              <Pressable
-                style={styles.devPayButton}
-                onPress={() => handleSimulatePayment(gig)}
-                disabled={gigPaymentLoading}
-              >
-                <Text style={styles.devPayButtonText}>
-                  {gigPaymentLoading ? 'Processing...' : `Test Payment — $${gig.pay_offered}`}
-                </Text>
-              </Pressable>
-            )}
-            {gigPaymentError && !isPaid ? (
-              <Text style={styles.devPayError}>{gigPaymentError}</Text>
-            ) : null}
-          </View>
-        );
-      })}
-        </ScrollView>
-      )}
+      {/* Search Bar */}
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search gigs, churches..."
+        placeholderTextColor={Colors.textSecondary}
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        returnKeyType="search"
+        clearButtonMode="while-editing"
+      />
 
       {/* Instrument Filters */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
@@ -238,73 +200,85 @@ export default function MusicianHomeScreen() {
         ))}
       </ScrollView>
 
-      {/* Hot Gigs — liquid glass banner */}
-      {hotGigs.length > 0 && selectedInstruments.length === 0 && (
-        <View style={styles.hotGigsSection}>
-          {/* Skeleton placeholders — same shape as GigCards but no real data */}
-          <View pointerEvents="none" style={styles.hotCarousel}>
-            {hotGigs.map((_, i) => (
-              <View key={i} style={styles.hotCarouselCard}>
-                <View style={styles.skeletonCard}>
-                  <View style={styles.skeletonTitle} />
-                  <View style={styles.skeletonSubtitle} />
-                  <View style={styles.skeletonRow} />
-                  <View style={styles.skeletonPay} />
+      {/* Applied Gig Roadmap — single card or horizontal carousel */}
+      {appliedGigs.length > 0 && (
+        <>
+          <Text style={styles.gigsInProgressTitle}>Gigs In Progress</Text>
+          <ScrollView
+            horizontal={appliedGigs.length > 1}
+            scrollEnabled={appliedGigs.length > 1}
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={appliedGigs.length > 1 ? carouselCardWidth + Spacing.sm : undefined}
+            decelerationRate="fast"
+            contentContainerStyle={appliedGigs.length > 1 ? styles.carouselContent : undefined}
+          >
+        {appliedGigs.map((gig) => {
+          const isPaid = paidGigIds.has(gig.id);
+          return (
+            <View
+              key={`roadmap-${gig.id}`}
+              style={[styles.roadmapCard, appliedGigs.length > 1 && { width: carouselCardWidth }]}
+            >
+              <Text variant="titleSmall" style={styles.roadmapGigTitle} numberOfLines={1}>{gig.title}</Text>
+              {gig.church && (
+                <Text variant="bodySmall" style={styles.roadmapChurch}>{gig.church.display_name}</Text>
+              )}
+              <View style={styles.roadmapTrack}>
+                <View style={styles.roadmapStep}>
+                  <View style={[styles.roadmapDot, styles.roadmapDotDone]} />
+                  <Text style={styles.roadmapStepLabel}>Applied</Text>
+                </View>
+                <View style={[styles.roadmapLine, styles.roadmapLineDone]} />
+                <View style={styles.roadmapStep}>
+                  <View style={[styles.roadmapDot, isPaid ? styles.roadmapDotDone : styles.roadmapDotActive]} />
+                  <Text style={[styles.roadmapStepLabel, isPaid ? undefined : styles.roadmapStepLabelActive]}>
+                    {isPaid ? 'Paid' : 'Payment\npending'}
+                  </Text>
+                </View>
+                <View style={[styles.roadmapLine, isPaid ? styles.roadmapLineDone : styles.roadmapLineInactive]} />
+                <View style={styles.roadmapStep}>
+                  <View style={[styles.roadmapDot, isPaid ? styles.roadmapDotDone : styles.roadmapDotInactive]} />
+                  <Text style={[styles.roadmapStepLabel, isPaid ? undefined : styles.roadmapStepLabelInactive]}>
+                    Accepted
+                  </Text>
                 </View>
               </View>
-            ))}
-          </View>
 
-          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFillObject} />
-          <View style={[StyleSheet.absoluteFillObject, styles.glassTint]} />
+              {__DEV__ && !isPaid && (
+                <Pressable
+                  style={styles.devPayButton}
+                  onPress={() => handleSimulatePayment(gig)}
+                  disabled={gigPaymentLoading}
+                >
+                  <Text style={styles.devPayButtonText}>
+                    {gigPaymentLoading ? 'Processing...' : `Test Payment — $${gig.pay_offered}`}
+                  </Text>
+                </Pressable>
+              )}
+              {gigPaymentError && !isPaid ? (
+                <Text style={styles.devPayError}>{gigPaymentError}</Text>
+              ) : null}
 
-          {isPremium ? (
-            <View style={styles.hotGigsContent}>
-              <View style={styles.hotGigsHeader}>
-                <Flame size={24} color="#F97316" />
-                <Text variant="titleLarge" style={styles.hotGigsTitle}> Hot Gigs</Text>
-              </View>
-              <Text variant="bodyMedium" style={styles.hotGigsSubtitle}>
-                Highest-paying opportunities right now. Be the first.
-              </Text>
+              {cancelConfirmGigId === gig.id ? (
+                <View style={styles.cancelConfirmRow}>
+                  <Text style={styles.cancelConfirmText}>Are you sure?</Text>
+                  <Pressable style={styles.cancelConfirmYesButton} onPress={() => cancelApplication(gig.id)}>
+                    <Text style={styles.cancelConfirmYes}>Yes, Cancel</Text>
+                  </Pressable>
+                  <Pressable style={styles.cancelConfirmKeepButton} onPress={() => setCancelConfirmGigId(null)}>
+                    <Text style={styles.cancelConfirmKeep}>Keep</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable style={styles.cancelButton} onPress={() => setCancelConfirmGigId(gig.id)}>
+                  <Text style={styles.cancelButtonText}>Cancel Application</Text>
+                </Pressable>
+              )}
             </View>
-          ) : (
-            <View style={[StyleSheet.absoluteFillObject, styles.padlockOverlay]}>
-              <Lock size={32} color={Colors.text} />
-              <Text variant="titleMedium" style={styles.padlockTitle}>Get Premium to unlock</Text>
-              <View style={styles.hotGigsHeader}>
-                <Flame size={24} color="#F97316" />
-                <Text variant="titleLarge" style={styles.hotGigsTitle}> Hot Gigs</Text>
-              </View>
-              <Text variant="bodySmall" style={styles.padlockSubtitle}>
-                Highest-paying opportunities right now. Be the first.
-              </Text>
-              <Pressable
-                style={styles.upgradeButton}
-                onPress={() => router.push('/(auth)/login')}
-              >
-                <Text style={styles.upgradeButtonText}>Upgrade Now →</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Trending Section */}
-      {trendingGigs.length > 0 && selectedInstruments.length === 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <TrendingUp size={20} color={Colors.primary} />
-            <Text variant="titleLarge" style={styles.sectionTitle}> Trending</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
-            {trendingGigs.map((gig) => (
-              <View key={gig.id} style={styles.trendingCard}>
-                <GigCard gig={gig} isApplied={appliedGigIds.has(gig.id)} onApply={() => handleApplyPress(gig)} />
-              </View>
-            ))}
+          );
+        })}
           </ScrollView>
-        </View>
+        </>
       )}
 
       {/* Recommended Section */}
@@ -318,7 +292,7 @@ export default function MusicianHomeScreen() {
       )}
 
       <Text variant="titleMedium" style={styles.sectionTitle}>
-        {selectedInstruments.length > 0 ? 'Filtered Gigs' : 'All Gigs'}
+        {searchQuery.trim() ? 'Search Results' : selectedInstruments.length > 0 ? 'Filtered Gigs' : 'All Gigs'}
       </Text>
     </View>
   );
@@ -337,7 +311,7 @@ export default function MusicianHomeScreen() {
         data={filteredGigs}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <GigCard gig={item} isApplied={appliedGigIds.has(item.id)} onApply={() => handleApplyPress(item)} />}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingTop: topInset + Spacing.md, paddingBottom: TAB_BAR_HEIGHT + bottomInset }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -423,6 +397,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  searchInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
   filterScroll: { marginBottom: Spacing.md },
   filterContent: { gap: Spacing.xs },
   filterChip: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
@@ -430,68 +415,27 @@ const styles = StyleSheet.create({
   filterChipText: { color: '#000000', fontSize: 13 },
   filterChipTextSelected: { color: '#1A1A1A' },
 
-  hotGigsSection: {
-    height: 220,
-    borderRadius: 20,
-    overflow: 'hidden',
-    marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-  },
-  hotCarousel: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    padding: Spacing.sm,
-  },
-  hotCarouselCard: { width: 270 },
-  glassTint: { backgroundColor: 'rgba(251, 249, 254, 0.08)' },
-  hotGigsContent: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  hotGigsHeader: { flexDirection: 'row', alignItems: 'center' },
-  hotGigsTitle: { fontWeight: 'bold', color: Colors.text, fontSize: 22 },
-  hotGigsSubtitle: { color: Colors.textSecondary, marginTop: 6 },
-
   section: { marginBottom: Spacing.lg },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
   sectionTitle: { fontWeight: 'bold', color: Colors.text, marginBottom: Spacing.sm },
-
-  horizontalList: { gap: Spacing.md, paddingRight: Spacing.md },
-  trendingCard: { width: 300 },
 
   empty: { alignItems: 'center', paddingTop: Spacing.xl * 3 },
   emptyText: { color: Colors.text },
   emptySubtext: { color: Colors.textSecondary, marginTop: Spacing.sm },
 
-  padlockOverlay: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(251, 249, 254, 0.42)',
-    borderRadius: 20,
-    gap: Spacing.sm,
+  gigsInProgressTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.xs,
   },
-  padlockSubtitle: {
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  upgradeButton: {
-    marginTop: Spacing.sm,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: 12,
-    backgroundColor: Colors.primary,
-    borderRadius: 20,
-  },
-  upgradeButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 },
-  padlockTitle: { color: Colors.text, fontWeight: '600' },
 
   roadmapCard: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
     padding: Spacing.md,
-    marginBottom: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
     borderLeftWidth: 3,
     borderLeftColor: Colors.primary,
   },
@@ -509,6 +453,24 @@ const styles = StyleSheet.create({
   roadmapStepLabel: { fontSize: 10, color: Colors.text, textAlign: 'center' },
   roadmapStepLabelActive: { color: Colors.primary, fontWeight: '600' },
   roadmapStepLabelInactive: { color: Colors.textSecondary },
+
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: Spacing.sm,
+  },
+  cancelButtonText: { color: Colors.error, fontSize: 13, fontWeight: '600' },
+  cancelConfirmRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.sm },
+  cancelConfirmText: { color: Colors.textSecondary, fontSize: 12 },
+  cancelConfirmYesButton: { backgroundColor: '#FEE2E2', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 },
+  cancelConfirmYes: { color: Colors.error, fontWeight: '600', fontSize: 12 },
+  cancelConfirmKeepButton: { backgroundColor: Colors.chipBackground, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 },
+  cancelConfirmKeep: { color: Colors.primary, fontWeight: '600', fontSize: 12 },
 
   applyModal: {
     backgroundColor: Colors.surface,
