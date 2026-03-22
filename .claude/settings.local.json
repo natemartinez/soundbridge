@@ -7,7 +7,30 @@
       "Bash(npx expo customize:*)",
       "Bash(npx expo install:*)",
       "Bash(export PATH=\"/home/swadaddy4life/.local/share/pnpm:/home/swadaddy4life/.nvm/versions/node/v20.19.5/bin:$PATH\")",
-      "Bash(pnpm config set:*)"
+      "Bash(pnpm config set:*)",
+      "Bash(export PATH=\"/home/swadaddy4life/.nvm/versions/node/v20.19.5/bin:/home/swadaddy4life/.local/share/pnpm:$PATH\")",
+      "Bash(npx expo export:*)",
+      "Bash(/home/swadaddy4life/.nvm/versions/node/v24.11.0/bin/node /home/swadaddy4life/.nvm/versions/node/v24.11.0/bin/npm install @expo-google-fonts/nunito)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git -C /home/swadaddy4life/Downloads/treyappfiles log --oneline -3)",
+      "Bash(sudo sysctl:*)",
+      "Bash(bash -c 'export NVM_DIR=\"\"$HOME/.nvm\"\" && source \"\"$NVM_DIR/nvm.sh\"\" && nvm use v20.19.5 && npx tsc --noEmit --skipLibCheck')",
+      "Bash(curl:*)",
+      "Bash(export:*)",
+      "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash(source:*)",
+      "Bash(eas build:view 3696661f-a024-46a1-9080-2ef7bf05aa07 --json)",
+      "Bash(npx expo prebuild --platform android --clean)",
+      "Bash(EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile development --non-interactive)",
+      "Bash(du -sh /home/swadaddy4life/Downloads/treyappfiles/assets/*)",
+      "Bash(pnpm install)",
+      "Bash(pnpm add:*)",
+      "Bash(grep -r \"firestore\\\\|firebase\\\\|collection\\\\|fetch.*gig\" /home/swadaddy4life/Downloads/treyappfiles/app --include=*.tsx --include=*.ts)",
+      "Read(//home/swadaddy4life/**)",
+      "Bash(find /tmp -name *studio*lock*)",
+      "Read(//home/swadaddy4life/.config/**)"
     ]
   }
 }

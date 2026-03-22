@@ -28,7 +28,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.inner}>
-        <Text variant="headlineLarge" style={styles.title}>OnSpace</Text>
+        <Text variant="headlineLarge" style={styles.title}>SoundBridge</Text>
         <Text variant="bodyLarge" style={styles.subtitle}>
           Connecting musicians with churches
         </Text>

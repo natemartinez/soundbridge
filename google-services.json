@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "830687592109",
+    "project_id": "gig-app-16877",
+    "storage_bucket": "gig-app-16877.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:830687592109:android:78e1cc9ff739bef2585024",
+        "android_client_info": {
+          "package_name": "com.soundbridge.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "830687592109-v13h1i5gmj207ntgpp4gmbkk97gs8o34.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMuFtNHxcGoFktPHGPJeN0va7VANnkPzc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "830687592109-v13h1i5gmj207ntgpp4gmbkk97gs8o34.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

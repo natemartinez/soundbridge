@@ -1,20 +1,46 @@
-import { Redirect } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { StyleSheet, Animated, ActivityIndicator } from 'react-native';
+import { Text } from 'react-native-paper';
+import { router } from 'expo-router';
+import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/stores/authStore';
 
 export default function Index() {
-  const session = useAuthStore((s) => s.session);
-  const profile = useAuthStore((s) => s.profile);
+  const fadeOut = useRef(new Animated.Value(1)).current;
+  const user = useAuthStore((s) => s.user);
+  const initialized = useAuthStore((s) => s.initialized);
 
-  // Authenticated users with incomplete profile go to onboarding
-  if (session && (!profile || !profile.display_name)) {
-    return <Redirect href="/(auth)/onboarding" />;
-  }
+  useEffect(() => {
+    if (!initialized) return;
+    Animated.timing(fadeOut, {
+      toValue: 0,
+      duration: 500,
+      useNativeDriver: true,
+    }).start(() => {
+      router.replace(user ? '/(musician)/home' : '/(auth)/login');
+    });
+  }, [initialized]);
 
-  // Authenticated church users go to church home
-  if (session && profile?.role === 'church') {
-    return <Redirect href="/(church)/home" />;
-  }
-
-  // Everyone else (unauthenticated or musicians) browses gigs
-  return <Redirect href="/(musician)/home" />;
+  return (
+    <Animated.View style={[styles.container, { opacity: fadeOut }]}>
+      <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
+      <Text variant="headlineMedium" style={styles.title}>Gig Worship</Text>
+    </Animated.View>
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spinner: {
+    marginBottom: 20,
+  },
+  title: {
+    fontWeight: 'bold',
+    color: Colors.primary,
+  },
+});

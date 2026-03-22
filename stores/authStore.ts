@@ -1,15 +1,15 @@
 import { create } from 'zustand';
-import { supabase } from '@/lib/supabase';
+import { auth, firestore } from '@/lib/firebase';
 import { Profile, UserRole } from '@/lib/types';
-import { Session } from '@supabase/supabase-js';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 interface AuthState {
-  session: Session | null;
+  user: FirebaseAuthTypes.User | null;
   profile: Profile | null;
   loading: boolean;
   initialized: boolean;
 
-  initialize: () => Promise<void>;
+  initialize: () => void;
   signUp: (email: string, password: string, role: UserRole) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -18,72 +18,63 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  session: null,
+  user: null,
   profile: null,
   loading: false,
   initialized: false,
 
-  initialize: async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    set({ session, initialized: true });
-
-    if (session) {
-      await get().fetchProfile();
+  initialize: () => {
+    try {
+      auth().onAuthStateChanged((user) => {
+        set({ user, initialized: true });
+        if (user) {
+          get().fetchProfile();
+        } else {
+          set({ profile: null });
+        }
+      });
+    } catch {
+      set({ initialized: true });
     }
-
-    supabase.auth.onAuthStateChange((_event, session) => {
-      set({ session });
-      if (session) {
-        get().fetchProfile();
-      } else {
-        set({ profile: null });
-      }
-    });
   },
 
   signUp: async (email, password, role) => {
     set({ loading: true });
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+    try {
+      const { user } = await auth().createUserWithEmailAndPassword(email, password);
 
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
+      await firestore().collection('users').doc(user.uid).set({
         role,
         display_name: '',
         bio: '',
         location_city: '',
         location_state: '',
+        account_tier: 'basic',
+        created_at: new Date().toISOString(),
       });
-      if (profileError) throw profileError;
+    } finally {
+      set({ loading: false });
     }
-    set({ loading: false });
   },
 
   signIn: async (email, password) => {
     set({ loading: true });
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    await auth().signInWithEmailAndPassword(email, password);
     set({ loading: false });
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
-    set({ session: null, profile: null });
+    await auth().signOut();
+    set({ user: null, profile: null });
   },
 
   fetchProfile: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = auth().currentUser;
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    if (!error && data) {
-      set({ profile: data as Profile });
+    const doc = await firestore().collection('users').doc(user.uid).get();
+    if (doc.exists) {
+      set({ profile: { id: user.uid, ...doc.data() } as Profile });
     }
   },
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStripe } from '@stripe/stripe-react-native';
-import { supabase } from '@/lib/supabase';
+import { auth } from '@/lib/firebase';
 import { useAuthStore } from '@/stores/authStore';
 import { Colors } from '@/constants/theme';
 
@@ -15,13 +15,16 @@ export function useStripeUpgrade() {
     setError('');
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const user = auth().currentUser;
+      if (!user) throw new Error('Not signed in');
+      const token = await user.getIdToken();
+
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`,
+        `${process.env.EXPO_PUBLIC_FIREBASE_FUNCTIONS_URL}/createPaymentIntent`,
         {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${session?.access_token}`,
+            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         }
@@ -31,11 +34,11 @@ export function useStripeUpgrade() {
       if (fnError) throw new Error(fnError);
 
       const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: 'OnSpace',
+        merchantDisplayName: 'SoundBridge',
         customerId,
         customerEphemeralKeySecret: ephemeralKey,
         paymentIntentClientSecret: clientSecret,
-        defaultBillingDetails: { email: session?.user?.email ?? '' },
+        defaultBillingDetails: { email: user.email ?? '' },
         appearance: {
           colors: {
             primary: Colors.primary,

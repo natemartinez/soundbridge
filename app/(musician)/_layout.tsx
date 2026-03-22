@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Tabs, router } from 'expo-router';
-import { Home, Search, MessageCircle, Settings, LogIn, User } from 'lucide-react-native';
+import { Home, Flame, MessageCircle, Settings, LogIn, User } from 'lucide-react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
@@ -47,7 +47,7 @@ export default function MusicianLayout() {
 
                 switch (route.name) {
                   case 'home': icon = <Home size={iconSize} color={color} />; break;
-                  case 'search': icon = <Search size={iconSize} color={color} />; break;
+                  case 'trending': icon = <Flame size={iconSize} color={color} />; break;
                   case 'profile':
                     icon = user
                       ? <User size={iconSize} color={color} />
@@ -73,6 +73,7 @@ export default function MusicianLayout() {
         )}
       >
         <Tabs.Screen name="home" options={{ title: 'Gigs' }} />
+        <Tabs.Screen name="trending" options={{ title: 'Trending' }} />
         <Tabs.Screen name="search" options={{ title: 'Search' }} />
         <Tabs.Screen name="profile" options={{ title: user ? 'Profile' : 'Sign In' }} />
         <Tabs.Screen name="messages" options={{ title: 'Messages' }} />

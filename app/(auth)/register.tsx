@@ -30,7 +30,7 @@ export default function RegisterScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.inner}>
-        <Text variant="headlineLarge" style={styles.title}>Join OnSpace</Text>
+        <Text variant="headlineLarge" style={styles.title}>Join SoundBridge</Text>
 
         <Text variant="titleMedium" style={styles.label}>I am a...</Text>
         <SegmentedButtons
