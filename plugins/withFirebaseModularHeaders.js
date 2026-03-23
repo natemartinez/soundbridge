@@ -57,17 +57,19 @@ module.exports = function withFirebaseModularHeaders(config) {
         );
       }
 
-      // 2. Add post_install fix: remove broken gRPC-Core modulemap flag from gRPC-C++
+      // 2. Add post_install fix: remove broken gRPC-Core modulemap flag from ALL targets.
+      // use_modular_headers! injects -fmodule-map-file pointing to a path that doesn't
+      // exist, and CocoaPods propagates it to every pod that depends on gRPC-Core
+      // (gRPC-C++, FirebaseFirestoreInternal, etc.), not just the root pod.
       const grpcFix = `
     # Fix: use_modular_headers! generates module maps at a different path than
-    # gRPC-C++ expects for gRPC-Core. Remove the broken -fmodule-map-file flag.
+    # CocoaPods injects via -fmodule-map-file for gRPC-Core. This broken flag
+    # propagates to ALL pods depending on gRPC-Core, so strip it from every target.
     installer.pods_project.targets.each do |target|
-      if target.name == 'gRPC-C++'
-        target.build_configurations.each do |config|
-          other_cflags = Array(config.build_settings['OTHER_CFLAGS'])
-          config.build_settings['OTHER_CFLAGS'] = other_cflags.reject do |flag|
-            flag.to_s.include?('gRPC-Core.modulemap')
-          end
+      target.build_configurations.each do |config|
+        other_cflags = Array(config.build_settings['OTHER_CFLAGS'])
+        config.build_settings['OTHER_CFLAGS'] = other_cflags.reject do |flag|
+          flag.to_s.include?('gRPC-Core.modulemap')
         end
       end
     end`;
