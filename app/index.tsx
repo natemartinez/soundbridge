@@ -17,14 +17,14 @@ export default function Index() {
       duration: 500,
       useNativeDriver: true,
     }).start(() => {
-      router.replace(user ? '/(musician)/home' : '/(auth)/login');
+      router.replace('/(musician)/home');
     });
   }, [initialized]);
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeOut }]}>
       <ActivityIndicator size="large" color={Colors.primary} style={styles.spinner} />
-      <Text variant="headlineMedium" style={styles.title}>Gig Worship</Text>
+      <Text variant="headlineMedium" style={styles.title}>SoundBridge</Text>
     </Animated.View>
   );
 }

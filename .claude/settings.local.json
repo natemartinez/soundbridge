@@ -30,7 +30,10 @@
       "Bash(grep -r \"firestore\\\\|firebase\\\\|collection\\\\|fetch.*gig\" /home/swadaddy4life/Downloads/treyappfiles/app --include=*.tsx --include=*.ts)",
       "Read(//home/swadaddy4life/**)",
       "Bash(find /tmp -name *studio*lock*)",
-      "Read(//home/swadaddy4life/.config/**)"
+      "Read(//home/swadaddy4life/.config/**)",
+      "Bash(eas build:*)",
+      "Bash(eas build:view e7508385-368e-44ff-a95c-4a823907d3d8 --json)",
+      "Bash(npx expo:*)"
     ]
   }
 }
