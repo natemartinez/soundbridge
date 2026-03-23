@@ -2,7 +2,7 @@
   "expo": {
     "name": "SoundBridge",
     "slug": "onspace-app",
-    "version": "1.0.0-beta.1",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "scheme": "soundbridge",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.soundbridge.app",
-      "buildNumber": "1",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -37,6 +37,7 @@
     },
     "plugins": [
       "./plugins/withJitpackExclusion",
+      "./plugins/withFirebaseModularHeaders",
       "@react-native-firebase/app",
       "expo-router",
       [
