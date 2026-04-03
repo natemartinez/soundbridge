@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    "moduleResolution": "node",
     "noImplicitReturns": true,
     "outDir": "lib",
     "sourceMap": true,
@@ -12,5 +13,4 @@
   "include": [
     "src"
   ],
-  "extends": "expo/tsconfig.base"
 }
