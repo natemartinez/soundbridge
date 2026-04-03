@@ -1,75 +1,106 @@
-# Welcome to SoundBridge
+# SoundBridge
 
-SoundBridge empowers anyone to turn ideas into powerful AI applications in minutes—no coding required. Our free, no-code platform enables effortless creation of custom AI apps; simply describe your vision and our agentic AI handles the rest. The soundbridge-app, built with React Native and Expo, demonstrates this capability—integrating popular third-party libraries to deliver seamless cross-platform performance across iOS, Android, and Web environments.
+SoundBridge is a cross-platform mobile and web app that connects musicians with churches seeking worship talent. Musicians browse and apply for gigs; churches post opportunities and hire. The app runs on iOS, Android, and web via React Native and Expo.
+
+## Features
+
+- **Gig Marketplace** — Musicians filter gigs by instrument, location, date, and pay rate, then apply directly through the app
+- **Church Profiles** — Churches post gig details including compensation, required instruments, denomination, and worship style
+- **Messaging** — Real-time chat between musicians and churches
+- **Payments** — Stripe integration for gig bookings and premium account upgrades
+- **Authentication** — Firebase Auth with role-based access for musicians and churches
+
+## Tech Stack
+
+**Frontend**
+- React Native 0.81.5 with Expo 54
+- Expo Router (file-based navigation)
+- TypeScript 5.9
+- NativeWind (Tailwind CSS for React Native)
+- Zustand (auth state), Apollo Client (GraphQL)
+
+**Backend & Services**
+- Firebase — Firestore, Auth, Cloud Functions
+- Stripe — payments
+- GraphQL + Apollo
+
+**UI**
+- React Native Paper, React Native Elements
+- Lucide React Native icons
+- Lottie animations
+
+## Project Structure
+
+```
+soundbridge/
+├── app/               # Expo Router screens and navigation
+│   ├── (auth)/        # Login, register, onboarding
+│   ├── (musician)/    # Musician tabs: home, search, profile, messages
+│   └── public-profile/
+├── components/        # Shared UI components (GigCard, ProfileCard, etc.)
+├── stores/            # Zustand state (authStore)
+├── lib/               # Firebase client, TypeScript types
+├── constants/         # Theme, instrument lists
+├── functions/         # Firebase Cloud Functions (Node.js/TypeScript)
+└── assets/            # Images and icons
+```
 
 ## Getting Started
 
-### 1. Install Dependencies
+### Prerequisites
+
+- Node.js 18+
+- Expo CLI (`npm install -g expo-cli`)
+- Firebase project with Firestore and Auth enabled
+- Stripe account (for payments)
+
+### Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+EXPO_PUBLIC_FIREBASE_FUNCTIONS_URL=https://us-central1-YOUR_PROJECT.cloudfunctions.net
+```
+
+Place your Firebase config files in the project root:
+- `google-services.json` (Android)
+- `GoogleService-Info.plist` (iOS)
+
+### Install and Run
 
 ```bash
 npm install
-# or
-yarn install
+
+npm run start      # Expo dev server
+npm run ios        # iOS simulator
+npm run android    # Android emulator
+npm run web        # Web browser
 ```
 
-### 2. Start the Project
-
-- Start the development server (choose your platform):
+### Firebase Functions
 
 ```bash
-npm run start         # Start Expo development server
-npm run android       # Launch Android emulator
-npm run ios           # Launch iOS simulator
-npm run web           # Start the web version
+cd functions
+npm install
+npm run serve      # Local emulation
+npm run deploy     # Deploy to Firebase
 ```
 
-- Reset the project (clear cache, etc.):
-
-```bash
-npm run reset-project
-```
-
-### 3. Lint the Code
+### Lint
 
 ```bash
 npm run lint
 ```
 
-## Main Dependencies
-
-- React Native: 0.79.4
-- React: 19.0.0
-- Expo: ~53.0.12
-- Expo Router: ~5.1.0
-- Supabase: ^2.50.0
-- Other commonly used libraries:  
-  - @expo/vector-icons  
-  - react-native-paper  
-  - react-native-calendars  
-  - lottie-react-native  
-  - react-native-webview  
-  - and more
-
-For a full list of dependencies, see [package.json](./package.json).
-
-## Development Tools
-
-- TypeScript: ~5.8.3
-- ESLint: ^9.25.0
-- @babel/core: ^7.25.2
-
 ## Contributing
 
-1. Fork this repository
-2. Create a new branch (`git checkout -b main`)
-3. Commit your changes (`git commit -am 'Add new feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Commit your changes: `git commit -m 'Add your feature'`
+4. Push: `git push origin feature/your-feature`
+5. Open a pull request
 
 ## License
 
-This project is private ("private": true). For collaboration inquiries, please contact the author.
-
----
-
-Feel free to add project screenshots, API documentation, feature descriptions, or any other information as needed.
+Private. Contact the author for collaboration inquiries.
