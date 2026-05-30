@@ -8,7 +8,6 @@ import { Gig } from '@/lib/types';
 import { Colors, Spacing, TAB_BAR_HEIGHT } from '@/constants/theme';
 import { INSTRUMENTS, InstrumentKey } from '@/constants/instruments';
 import { GigCard } from '@/components/GigCard';
-import { useGigPayment } from '@/components/useGigPayment';
 import { firestore } from '@/lib/firebase';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -30,9 +29,8 @@ export default function MusicianHomeScreen() {
   const [paidGigIds, setPaidGigIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [cancelConfirmGigId, setCancelConfirmGigId] = useState<string | null>(null);
-  const { loading: gigPaymentLoading, error: gigPaymentError, handleGigPayment } = useGigPayment();
-
   const fetchGigs = async () => {
+    if (!user) { setLoading(false); return; }
     try {
       const snapshot = await firestore()
         .collection('gigs')
@@ -42,6 +40,8 @@ export default function MusicianHomeScreen() {
         .map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) }) as Gig)
         .sort((a, b) => b.created_at.localeCompare(a.created_at));
       setAllGigs(gigs);
+    } catch (e: any) {
+      if (e?.code !== 'permission-denied') console.error(e);
     } finally {
       setLoading(false);
     }
@@ -67,8 +67,9 @@ export default function MusicianHomeScreen() {
   };
 
   useEffect(() => {
+    if (!user) return;
     fetchGigs();
-  }, []);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (user) fetchAppliedGigs();
@@ -120,13 +121,6 @@ export default function MusicianHomeScreen() {
     .filter((g) => !appliedGigIds.has(g.id))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 3);
-
-  const handleSimulatePayment = async (gig: Gig) => {
-    const success = await handleGigPayment(gig);
-    if (success) {
-      setPaidGigIds((prev) => new Set(prev).add(gig.id));
-    }
-  };
 
   const handleApplyPress = (gig: Gig) => {
     setApplyModalGig(gig);
@@ -243,21 +237,6 @@ export default function MusicianHomeScreen() {
                   </Text>
                 </View>
               </View>
-
-              {__DEV__ && !isPaid && (
-                <Pressable
-                  style={styles.devPayButton}
-                  onPress={() => handleSimulatePayment(gig)}
-                  disabled={gigPaymentLoading}
-                >
-                  <Text style={styles.devPayButtonText}>
-                    {gigPaymentLoading ? 'Processing...' : `Test Payment — $${gig.pay_offered}`}
-                  </Text>
-                </Pressable>
-              )}
-              {gigPaymentError && !isPaid ? (
-                <Text style={styles.devPayError}>{gigPaymentError}</Text>
-              ) : null}
 
               {cancelConfirmGigId === gig.id ? (
                 <View style={styles.cancelConfirmRow}>
@@ -498,16 +477,6 @@ const styles = StyleSheet.create({
   applySuccessTitle: { fontWeight: 'bold', color: Colors.text, textAlign: 'center', marginBottom: Spacing.sm },
   applySuccessText: { color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.lg },
 
-  devPayButton: {
-    marginTop: Spacing.sm,
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  devPayButtonText: { color: '#1A1A1A', fontWeight: '600', fontSize: 13 },
-  devPayError: { color: '#EF4444', fontSize: 12, marginTop: 4 },
   carouselContent: { paddingHorizontal: Spacing.md, gap: Spacing.sm },
   skeletonCard: {
     backgroundColor: Colors.surface,

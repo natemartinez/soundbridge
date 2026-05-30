@@ -18,6 +18,7 @@ export default function MusicianSearchScreen() {
   const [selectedInstruments, setSelectedInstruments] = useState<InstrumentKey[]>([]);
 
   useEffect(() => {
+    if (!user) return;
     firestore()
       .collection('gigs')
       .where('active', '==', true)
@@ -26,7 +27,7 @@ export default function MusicianSearchScreen() {
         setAllGigs(snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Gig));
       })
       .catch(() => {});
-  }, []);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;

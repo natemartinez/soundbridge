@@ -23,7 +23,9 @@ export default function TrendingScreen() {
   const [applyModalGig, setApplyModalGig] = useState<Gig | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     const fetchHotGigs = async () => {
+      if (!user) { setLoading(false); return; }
       try {
         const snapshot = await firestore()
           .collection('gigs')
@@ -34,12 +36,14 @@ export default function TrendingScreen() {
           .filter(g => g.pay_offered != null)
           .sort((a, b) => (b.pay_offered ?? 0) - (a.pay_offered ?? 0));
         setHotGigs(gigs);
+      } catch (e: any) {
+        if (e?.code !== 'permission-denied') console.error(e);
       } finally {
         setLoading(false);
       }
     };
     fetchHotGigs();
-  }, []);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;

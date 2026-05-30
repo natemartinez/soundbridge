@@ -32,10 +32,12 @@ export const createGigPayment = functions.https.onRequest(async (req, res) => {
       throw new Error('Invalid amount: must be between $1.00 and $1,000.00');
     }
 
-    // TODO(human): Add server-side gig amount verification here.
-    // Look up the gig in Firestore by gig_id, compare pay_offered
-    // with the client-provided amount_cents, and reject mismatches.
-    // For now, only basic range validation above is applied.
+    const gigDoc = await admin.firestore().collection('gigs').doc(gig_id).get();
+    if (!gigDoc.exists) throw new Error('Gig not found');
+    const expectedCents = Math.round(gigDoc.data()!.pay_offered * 100);
+    if (Math.abs(amount_cents - expectedCents) > 1) {
+      throw new Error('Amount mismatch: payment rejected');
+    }
 
     // Find or create Stripe customer
     const existingCustomers = await stripe.customers.search({

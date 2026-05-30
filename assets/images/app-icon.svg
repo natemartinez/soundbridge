@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9B59B6"/>
+      <stop offset="100%" stop-color="#2D1B4E"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Full-bleed background — stores apply their own corner rounding -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- Subtle arch line connecting bar tops (the bridge cable) -->
+  <path d="M 149,640 Q 511,290 873,640"
+        stroke="white" stroke-width="18" fill="none"
+        stroke-linecap="round" opacity="0.28"/>
+
+  <!-- 9 equalizer bars whose tops form a bridge arch silhouette -->
+  <rect x="149" y="640" width="52" height="130" rx="26" fill="white" fill-opacity="0.60"/>
+  <rect x="233" y="558" width="52" height="212" rx="26" fill="white" fill-opacity="0.70"/>
+  <rect x="317" y="468" width="52" height="302" rx="26" fill="white" fill-opacity="0.80"/>
+  <rect x="401" y="388" width="52" height="382" rx="26" fill="white" fill-opacity="0.90"/>
+  <rect x="485" y="338" width="52" height="432" rx="26" fill="white"/>
+  <rect x="569" y="388" width="52" height="382" rx="26" fill="white" fill-opacity="0.90"/>
+  <rect x="653" y="468" width="52" height="302" rx="26" fill="white" fill-opacity="0.80"/>
+  <rect x="737" y="558" width="52" height="212" rx="26" fill="white" fill-opacity="0.70"/>
+  <rect x="821" y="640" width="52" height="130" rx="26" fill="white" fill-opacity="0.60"/>
+
+  <!-- Bridge deck — horizontal baseline -->
+  <line x1="118" y1="770" x2="906" y2="770"
+        stroke="white" stroke-width="14" stroke-linecap="round" opacity="0.38"/>
+</svg>

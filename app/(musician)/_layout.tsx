@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Tabs, router } from 'expo-router';
 import { Home, Flame, MessageCircle, Settings, LogIn, User } from 'lucide-react-native';
@@ -10,7 +11,16 @@ const TAB_BAR_HEIGHT = 60;
 
 export default function MusicianLayout() {
   const user = useAuthStore((s) => s.user);
+  const initialized = useAuthStore((s) => s.initialized);
   const { bottom: bottomInset } = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (initialized && !user) {
+      router.replace('/(auth)/login');
+    }
+  }, [user, initialized]);
+
+  if (!user) return null;
 
   return (
     <View style={styles.root}>

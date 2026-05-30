@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
@@ -48,8 +49,18 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === '(auth)';
     if (user && inAuthGroup) {
       router.replace('/(musician)/home');
+    } else if (!user && !inAuthGroup) {
+      router.replace('/(auth)/login');
     }
   }, [user, initialized]);
+
+  if (!initialized) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <StripeWrapper>
