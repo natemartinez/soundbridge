@@ -18,7 +18,10 @@ workflows:
       - name: 1. Install Node Dependencies
         script: |
           # Project uses pnpm (see pnpm-lock.yaml)
-          pnpm install
+          # --no-frozen-lockfile allows pnpm to work even if the lockfile
+          # was generated with a different pnpm version
+          corepack enable
+          pnpm install --no-frozen-lockfile
 
       - name: 2. Generate Native iOS Directory (Expo Prebuild)
         script: |
