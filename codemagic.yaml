@@ -1,62 +1,59 @@
-# Configuration for SoundBridge iOS App Store Deployment
+# Configuration for SoundBridge Managed Expo iOS App Store Deployment
 workflows:
   ios-release:
     name: SoundBridge iOS Release
     
-    # 1. Connected Developer Portal API Integration
+    # Links your App Store Connect API key integration
     integrations:
       app_store_connect: soundbridge_api
 
     environment:
-      groups:
-        - manual_credentials # Optional: For storing any extra secure environment vars
-      vars:
-        XCODE_WORKSPACE: "SoundBridge.xcworkspace"
-        XCODE_SCHEME: "SoundBridge"
       node: latest
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.soundbridge.app
+      vars:
+        BUNDLE_ID: "com.soundbridge.app"
+        XCODE_WORKSPACE: "ios/SoundBridge.xcworkspace" # Generated dynamically by Expo Prebuild
+        XCODE_SCHEME: "SoundBridge"               # Typically matches the 'name' field in your app.json
 
     scripts:
-      - name: Install npm dependencies
+      - name: 1. Install Node Dependencies
         script: |
-          npm install
+          # Installs dependencies needed to execute expo commands
+          npm install 
 
-      - name: Run Expo Prebuild
+      - name: 2. Generate Native iOS Directory (Expo Prebuild)
         script: |
-          # The ios/ directory is gitignored, so we must generate it on CI
-          npx expo prebuild --platform ios --no-install
+          # Crucial step: This builds the transient /ios directory on the fly
+          npx expo prebuild --platform ios
 
-      - name: Ensure Production Entitlements
+      - name: 3. Initialize macOS Keychain
         script: |
-          # Ensure aps-environment is set to production for App Store builds
-          ENTITLEMENTS_PATH="$CM_BUILD_DIR/ios/SoundBridge/SoundBridge.entitlements"
-          if [ -f "$ENTITLEMENTS_PATH" ]; then
-            plutil -replace aps-environment -string "production" "$ENTITLEMENTS_PATH"
-            echo "Set aps-environment to production in entitlements"
-          else
-            echo "Warning: Entitlements file not found at $ENTITLEMENTS_PATH"
-          fi
+          # Creates a temporary secure keychain environment on the cloud Mac
+          keychain initialize
 
-      - name: Fetch or Create Profiles and Certificates
+      - name: 4. Fetch or Create Certificates and Profiles from Apple
         script: |
-          # The --create flag tells Codemagic to provision the profile on Apple if missing
-          xcode-project use-profiles --create
+          # Dynamically provisions your distribution certificates and profiles on Apple
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
 
-      - name: Build iOS App (.ipa)
+      - name: 5. Add generated certificates to Keychain
         script: |
-          # Builds and packages the app for App Store distribution
+          keychain add-certificates
+
+      - name: 6. Apply profiles to the newly generated Xcode project
+        script: |
+          # Maps the freshly minted profiles to the ios folder generated in step 2
+          xcode-project use-profiles
+
+      - name: 7. Build Signed iOS App (.ipa)
+        script: |
           xcode-project build-ipa \
             --workspace "$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME" \
             --configuration Release
 
-    # 2. Automated Pipeline Distribution to Apple
+    # Sends the resulting production build to TestFlight
     publishing:
       app_store_connect:
         auth: integration
-        
-        # Deployment Preferences
-        submit_to_testflight: true
+        submit_to_testflight: true     
         submit_to_app_store: false
