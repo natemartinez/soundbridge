@@ -17,13 +17,22 @@ workflows:
     scripts:
       - name: 1. Install Node Dependencies
         script: |
-          # Installs dependencies needed to execute expo commands
-          npm install 
+          # Project uses pnpm (see pnpm-lock.yaml)
+          pnpm install
 
       - name: 2. Generate Native iOS Directory (Expo Prebuild)
         script: |
           # Crucial step: This builds the transient /ios directory on the fly
           npx expo prebuild --platform ios
+
+      - name: 2b. Set Production Entitlements
+        script: |
+          # Patch aps-environment to production for App Store release
+          ENTITLEMENTS_PATH="$CM_BUILD_DIR/ios/SoundBridge/SoundBridge.entitlements"
+          if [ -f "$ENTITLEMENTS_PATH" ]; then
+            plutil -replace aps-environment -string "production" "$ENTITLEMENTS_PATH"
+            echo "Set aps-environment to production"
+          fi
 
       - name: 3. Initialize macOS Keychain
         script: |
