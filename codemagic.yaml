@@ -2,68 +2,104 @@
 workflows:
   ios-release:
     name: SoundBridge iOS Release
+    instance_type: mac_mini_m2
+    max_build_duration: 120
     
-    # Links your App Store Connect API key integration
     integrations:
       app_store_connect: soundbridge_api
 
     environment:
       node: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: "com.soundbridge.app"
       vars:
         BUNDLE_ID: "com.soundbridge.app"
-        XCODE_WORKSPACE: "ios/SoundBridge.xcworkspace" # Generated dynamically by Expo Prebuild
-        XCODE_SCHEME: "SoundBridge"               # Typically matches the 'name' field in your app.json
+        XCODE_WORKSPACE: "ios/SoundBridge.xcworkspace" 
+        XCODE_SCHEME: "SoundBridge"               
 
     scripts:
       - name: 1. Install Node Dependencies
         script: |
-          # Project uses pnpm (see pnpm-lock.yaml)
-          # --no-frozen-lockfile allows pnpm to work even if the lockfile
-          # was generated with a different pnpm version
-          corepack enable
-          pnpm install --no-frozen-lockfile
+          pnpm install 
 
       - name: 2. Generate Native iOS Directory (Expo Prebuild)
         script: |
-          # Crucial step: This builds the transient /ios directory on the fly
           npx expo prebuild --platform ios
 
-      - name: 2b. Set Production Entitlements
+      - name: 3. Patch Target Floors & Modulemaps (Fixes ScanDependencies & Swift Target Mismatch)
         script: |
-          # Patch aps-environment to production for App Store release
-          ENTITLEMENTS_PATH="$CM_BUILD_DIR/ios/SoundBridge/SoundBridge.entitlements"
-          if [ -f "$ENTITLEMENTS_PATH" ]; then
-            plutil -replace aps-environment -string "production" "$ENTITLEMENTS_PATH"
-            echo "Set aps-environment to production"
-          fi
+          echo "Patching CocoaPods .xcconfig files..."
+          # Set baseline floor to 16.0 inside all CocoaPods configuration text files
+          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' -E 's/IPHONEOS_DEPLOYMENT_TARGET[[:space:]]*=[[:space:]]*[0-9.]+/IPHONEOS_DEPLOYMENT_TARGET = 16.0/g' {} +
 
-      - name: 3. Initialize macOS Keychain
+          echo "Fixing missing gRPC modulemaps for Explicit Modules..."
+          mkdir -p ios/Pods/Headers/Private/grpc
+          find ios/Pods -name "gRPC-Core.modulemap" -exec cp {} ios/Pods/Headers/Private/grpc/gRPC-Core.modulemap \;
+          find ios/Pods -name "gRPC-C++.modulemap" -exec cp {} ios/Pods/Headers/Private/grpc/gRPC-C++.modulemap \;
+          echo "✅ gRPC modulemaps successfully mapped into place."
+
+          echo "Patching Pods.xcodeproj targets..."
+          ruby -e "
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('ios/Pods/Pods.xcodeproj')
+          
+          # Fix global configurations using an iOS 16.0 baseline floor
+          project.build_configurations.each do |config|
+            current_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+            if current_target < 16.0
+              config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+            end
+            config.build_settings['CLANG_EXPLICIT_MODULES'] = 'NO'
+            config.build_settings['CLANG_ENABLE_MODULE_VERIFIER'] = 'NO'
+          end
+          
+          # Fix target-specific configurations conditionally
+          project.targets.each do |target|
+            target.build_configurations.each do |config|
+              current_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+              if current_target < 16.0
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+              end
+              config.build_settings['CLANG_EXPLICIT_MODULES'] = 'NO'
+              config.build_settings['CLANG_ENABLE_MODULE_VERIFIER'] = 'NO'
+            end
+            
+            # Heavy C++ targets bypass fragile scanning and header maps
+            if ['BoringSSL-GRPC', 'gRPC-C++', 'gRPC-Core', 'FirebaseFirestoreInternal'].include?(target.name)
+              target.build_configurations.each do |config|
+                config.build_settings['USE_HEADERMAP'] = 'NO'
+              end
+              
+              target.build_phases.each do |phase|
+                next unless phase.respond_to?(:files)
+                phase.files.each do |file|
+                  # Force ALL Objective-C source files in these targets to compile as Objective-C++ 
+                  if file.file_ref && file.file_ref.respond_to?(:path) && file.file_ref.path && file.file_ref.path.end_with?('.m')
+                    file.settings ||= {}
+                    file.settings['COMPILER_FLAGS'] = '-x objective-c++'
+                  end
+                end
+              end
+            end
+          end
+          
+          project.save
+          "
+
+      - name: 4. Apply manual profiles to the newly generated Xcode project
         script: |
-          # Creates a temporary secure keychain environment on the cloud Mac
-          keychain initialize
+          xcode-project use-profiles --project ios/*.xcodeproj
 
-      - name: 4. Fetch or Create Certificates and Profiles from Apple
-        script: |
-          # Dynamically provisions your distribution certificates and profiles on Apple
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-
-      - name: 5. Add generated certificates to Keychain
-        script: |
-          keychain add-certificates
-
-      - name: 6. Apply profiles to the newly generated Xcode project
-        script: |
-          # Maps the freshly minted profiles to the ios folder generated in step 2
-          xcode-project use-profiles
-
-      - name: 7. Build Signed iOS App (.ipa)
+      - name: 5. Build Signed iOS App (.ipa)
         script: |
           xcode-project build-ipa \
             --workspace "$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME" \
-            --configuration Release
+            --config Release \
+            --disable-xcpretty \
+            --archive-flags="-destination 'generic/platform=iOS' COMPILER_INDEX_STORE_ENABLE=NO"
 
-    # Sends the resulting production build to TestFlight
     publishing:
       app_store_connect:
         auth: integration
