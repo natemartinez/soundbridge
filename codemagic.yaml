@@ -27,65 +27,68 @@ workflows:
         script: |
           npx expo prebuild --platform ios
 
-      - name: 3. Patch Target Floors & Modulemaps (Fixes ScanDependencies & Swift Target Mismatch)
+      - name: 3. Patch Target Floors & Modulemaps Surgically
         script: |
-          echo "Patching CocoaPods .xcconfig files..."
-          # Set baseline floor to 16.0 inside all CocoaPods configuration text files
-          find ios/Pods -name "*.xcconfig" -type f -exec sed -i '' -E 's/IPHONEOS_DEPLOYMENT_TARGET[[:space:]]*=[[:space:]]*[0-9.]+/IPHONEOS_DEPLOYMENT_TARGET = 16.0/g' {} +
-
           echo "Fixing missing gRPC modulemaps for Explicit Modules..."
           mkdir -p ios/Pods/Headers/Private/grpc
           find ios/Pods -name "gRPC-Core.modulemap" -exec cp {} ios/Pods/Headers/Private/grpc/gRPC-Core.modulemap \;
           find ios/Pods -name "gRPC-C++.modulemap" -exec cp {} ios/Pods/Headers/Private/grpc/gRPC-C++.modulemap \;
           echo "✅ gRPC modulemaps successfully mapped into place."
 
-          echo "Patching Pods.xcodeproj targets..."
+          echo "Executing Ruby script for localized target adjustments..."
           ruby -e "
           require 'xcodeproj'
           project = Xcodeproj::Project.open('ios/Pods/Pods.xcodeproj')
           
-          # Fix global configurations using an iOS 16.0 baseline floor
-          project.build_configurations.each do |config|
-            current_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
-            if current_target < 16.0
-              config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
-            end
-            config.build_settings['CLANG_EXPLICIT_MODULES'] = 'NO'
-            config.build_settings['CLANG_ENABLE_MODULE_VERIFIER'] = 'NO'
-          end
+          # Only isolate targets that explicitly cause issues
+          legacy_targets = [
+            'gRPC-Core', 
+            'gRPC-C++', 
+            'BoringSSL-GRPC', 
+            'FirebaseFirestoreInternal', 
+            'FirebaseCore', 
+            'FirebaseFirestore', 
+            'FirebaseSharedSwift'
+          ]
           
-          # Fix target-specific configurations conditionally
           project.targets.each do |target|
-            target.build_configurations.each do |config|
-              current_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
-              if current_target < 16.0
+            # 1. Isolate and lift ExpoSymbols up to iOS 16.0 safely
+            if target.name == 'ExpoSymbols'
+              target.build_configurations.each do |config|
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
               end
-              config.build_settings['CLANG_EXPLICIT_MODULES'] = 'NO'
-              config.build_settings['CLANG_ENABLE_MODULE_VERIFIER'] = 'NO'
+              puts 'Surgically adjusted ExpoSymbols to iOS 16.0'
             end
             
-            # Heavy C++ targets bypass fragile scanning and header maps
-            if ['BoringSSL-GRPC', 'gRPC-C++', 'gRPC-Core', 'FirebaseFirestoreInternal'].include?(target.name)
+            # 2. Quiet down the legacy explicit modules scanning only for problem pods
+            if legacy_targets.include?(target.name)
               target.build_configurations.each do |config|
+                config.build_settings['CLANG_EXPLICIT_MODULES'] = 'NO'
+                config.build_settings['CLANG_ENABLE_MODULE_VERIFIER'] = 'NO'
                 config.build_settings['USE_HEADERMAP'] = 'NO'
+                
+                val = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+                if val < 14.0 && val > 0
+                  config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+                end
               end
               
               target.build_phases.each do |phase|
                 next unless phase.respond_to?(:files)
                 phase.files.each do |file|
-                  # Force ALL Objective-C source files in these targets to compile as Objective-C++ 
                   if file.file_ref && file.file_ref.respond_to?(:path) && file.file_ref.path && file.file_ref.path.end_with?('.m')
                     file.settings ||= {}
                     file.settings['COMPILER_FLAGS'] = '-x objective-c++'
                   end
                 end
               end
+              puts \"Surgically sandboxed legacy target: #{target.name}\"
             end
           end
           
           project.save
           "
+          echo "✅ Localized patch complete. Stripe and core framework targets left in native state."
 
       - name: 4. Apply manual profiles to the newly generated Xcode project
         script: |
