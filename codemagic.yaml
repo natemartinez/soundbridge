@@ -40,7 +40,6 @@ workflows:
           require 'xcodeproj'
           project = Xcodeproj::Project.open('ios/Pods/Pods.xcodeproj')
           
-          # Only isolate targets that explicitly cause issues
           legacy_targets = [
             'gRPC-Core', 
             'gRPC-C++', 
@@ -52,7 +51,6 @@ workflows:
           ]
           
           project.targets.each do |target|
-            # 1. Isolate and lift ExpoSymbols up to iOS 16.0 safely
             if target.name == 'ExpoSymbols'
               target.build_configurations.each do |config|
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
@@ -60,7 +58,6 @@ workflows:
               puts 'Surgically adjusted ExpoSymbols to iOS 16.0'
             end
             
-            # 2. Quiet down the legacy explicit modules scanning only for problem pods
             if legacy_targets.include?(target.name)
               target.build_configurations.each do |config|
                 config.build_settings['CLANG_EXPLICIT_MODULES'] = 'NO'
@@ -88,7 +85,7 @@ workflows:
           
           project.save
           "
-          echo "✅ Localized patch complete. Stripe and core framework targets left in native state."
+          echo "✅ Localized patch complete."
 
       - name: 4. Apply manual profiles to the newly generated Xcode project
         script: |
@@ -96,12 +93,20 @@ workflows:
 
       - name: 5. Build Signed iOS App (.ipa)
         script: |
-          xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME" \
-            --config Release \
-            --disable-xcpretty \
-            --archive-flags="-destination 'generic/platform=iOS' COMPILER_INDEX_STORE_ENABLE=NO"
+          # Split flags cleanly into an array to prevent the CLI parser from choking
+          ARCHIVE_OPTS=(
+            --workspace "$XCODE_WORKSPACE"
+            --scheme "$XCODE_SCHEME"
+            --config Release
+            --archive-flags="COMPILER_INDEX_STORE_ENABLE=NO"
+          )
+          
+          xcode-project build-ipa "${ARCHIVE_OPTS[@]}"
+
+    # Tell Codemagic where to find the compiled binary for App Store submission
+    artifacts:
+      - /Users/builder/Library/Developer/Xcode/DerivedData/**/Build/Products/**/*.ipa
+      - build/ios/ipa/*.ipa
 
     publishing:
       app_store_connect:
