@@ -2,7 +2,10 @@
   "name": "soundbridge-app",
   "main": "expo-router/entry",
   "version": "1.0.0",
-  "packageManager": "pnpm@9.15.4",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -51,6 +54,7 @@
     "expo-asset": "~12.0.12",
     "expo-auth-session": "~7.0.10",
     "expo-blur": "~15.0.8",
+    "expo-build-properties": "~1.0.10",
     "expo-calendar": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "^8.0.8",
