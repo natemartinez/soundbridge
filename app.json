@@ -1,15 +1,20 @@
 {
   "expo": {
     "name": "SoundBridge",
-    "slug": "onspace-app",
+    "slug": "soundbridge",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "soundbridge",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-screen.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.soundbridge.app",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
@@ -18,54 +23,31 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.soundbridge.app",
-      "edgeToEdgeEnabled": true,
-      "versionCode": 1,
-      "googleServicesFile": "./google-services.json",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
-      "output": "single",
-      "favicon": "./assets/images/app-icon.png"
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "./plugins/withJitpackExclusion",
-      "./plugins/withFirebaseModularHeaders",
-      "@react-native-firebase/app",
       "expo-router",
       [
-        "expo-splash-screen",
+        "expo-build-properties",
         {
-          "image": "./assets/images/app-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "ios": {
+            "useFrameworks": "static",
+            "buildReactNativeFromSource": true
+          }
         }
-      ],
-      "expo-web-browser",
-      "@react-native-community/datetimepicker",
-      "expo-asset",
-      "expo-font",
-      "expo-localization",
-      "expo-mail-composer",
-      "expo-secure-store"
+      ]
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "da2ba1e8-3db0-4e40-acb2-688b18675993"
-      }
-    },
-    "owner": "nmartinezdev"
+    }
   }
 }
