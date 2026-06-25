@@ -1,34 +1,35 @@
 {
   "cli": {
-    "version": ">= 12.0.0",
-    "appVersionSource": "remote"
+    "version": ">= 10.0.0",
+    "appVersionSource": "remote",
+    "promptToConfigurePushNotifications": false
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "simulator": true
-      },
-      "android": {
-        "buildType": "apk"
-      }
+      "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      }
+      "distribution": "internal"
     },
     "production": {
       "ios": {
-        "buildConfiguration": "Release",
-        "autoIncrement": "buildNumber"
+        "simulator": false
       },
-      "android": {
-        "buildType": "app-bundle",
-        "autoIncrement": "versionCode"
+      "env": {
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_...",
+        "EXPO_PUBLIC_FIREBASE_FUNCTIONS_URL": "...",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "...",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "...",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "...",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "...",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "...",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "...",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "..."
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }
