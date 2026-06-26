@@ -28,6 +28,13 @@ const path = require('path');
  *    for affected pods resolves this. We use target_installation_results
  *    (same API as react_native_post_install's update_search_paths) to ensure
  *    our changes survive CocoaPods' xcconfig processing.
+ * 5. RNFBFirestore includes <Firebase/Firebase.h> (the umbrella header from
+ *    the core Firebase pod) but its podspec only depends on Firebase/Firestore
+ *    (a subspec), not Firebase directly. When use_frameworks! :static is set,
+ *    Firebase/Firestore creates FirebaseFirestore.framework while Firebase.h
+ *    lives in Firebase.framework. Since RNFBFirestore doesn't depend on
+ *    Firebase directly, CocoaPods doesn't add Firebase.framework/Headers to
+ *    its header search paths. We add it explicitly in the post_install hook.
  */
 module.exports = function withFirebaseModularHeaders(config) {
   return withDangerousMod(config, [
@@ -77,6 +84,12 @@ module.exports = function withFirebaseModularHeaders(config) {
       // Remove React-utils header search paths fix (OTHER_CFLAGS variant) if previously added
       contents = contents.replace(
         /\n\n    # Fix: add React-utils header search paths via OTHER_CFLAGS[\s\S]*?    end(?=\n  end\nend)/,
+        ''
+      );
+
+      // Remove Firebase framework header search path fix if previously added
+      contents = contents.replace(
+        /\n\n    # Fix: add Firebase framework header search path[\s\S]*?    end(?=\n  end\nend)/,
         ''
       );
 
@@ -177,6 +190,44 @@ module.exports = function withFirebaseModularHeaders(config) {
         contents = contents.replace(
           /(\n  end\nend\s*$)/,
           `\n${reactUtilsHeadersFix}$1`
+        );
+      }
+
+      // 3. Add post_install fix: add Firebase framework header search path for
+      //    RNFBFirestore. RNFBFirestore.podspec depends on Firebase/Firestore
+      //    (a subspec) which creates FirebaseFirestore.framework, but the source
+      //    files include <Firebase/Firebase.h> which lives in Firebase.framework
+      //    (from Firebase/CoreOnly, depended on by RNFBApp). Since RNFBFirestore
+      //    doesn't depend on Firebase directly, CocoaPods doesn't add
+      //    Firebase.framework/Headers to its header search paths.
+      //    We add it explicitly using target_installation_results API.
+      const firebaseHeadersFix = `
+    # Fix: add Firebase framework header search path for RNFBFirestore.
+    # RNFBFirestore depends on Firebase/Firestore (subspec) which creates
+    # FirebaseFirestore.framework, but its source files include <Firebase/Firebase.h>
+    # which lives in Firebase.framework (from Firebase/CoreOnly, depended on by
+    # RNFBApp). Since RNFBFirestore doesn't depend on Firebase directly, CocoaPods
+    # doesn't add Firebase.framework/Headers to its header search paths.
+    # We add it explicitly using target_installation_results API.
+    firebase_framework_headers = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase/Firebase.framework/Headers\\""
+    installer.target_installation_results.pod_target_installation_results.each do |pod_name, target_installation_result|
+      if pod_name == 'RNFBFirestore'
+        target_installation_result.native_target.build_configurations.each do |config|
+          current = config.build_settings['HEADER_SEARCH_PATHS']
+          search_paths = current.is_a?(Array) ? current : (current || '').split
+          unless search_paths.any? { |p| p.include?('Firebase.framework/Headers') }
+            search_paths << firebase_framework_headers
+            config.build_settings['HEADER_SEARCH_PATHS'] = search_paths
+          end
+        end
+        puts "  - Added Firebase framework header search path for RNFBFirestore"
+      end
+    end`;
+
+      if (!contents.includes('Firebase framework header search path for RNFBFirestore')) {
+        contents = contents.replace(
+          /(\n  end\nend\s*$)/,
+          `\n${firebaseHeadersFix}$1`
         );
       }
 
