@@ -25,7 +25,9 @@ const path = require('path');
  *    includes <react/utils/FollyConvert.h> from React-utils. Since these pods
  *    don't depend on React-utils directly, their header search paths don't
  *    include the ReactCommon directory. Adding it to HEADER_SEARCH_PATHS
- *    for affected pods resolves this.
+ *    for affected pods resolves this. We use target_installation_results
+ *    (same API as react_native_post_install's update_search_paths) to ensure
+ *    our changes survive CocoaPods' xcconfig processing.
  */
 module.exports = function withFirebaseModularHeaders(config) {
   return withDangerousMod(config, [
@@ -69,6 +71,12 @@ module.exports = function withFirebaseModularHeaders(config) {
       // Remove React-utils header search paths fix if previously added
       contents = contents.replace(
         /\n\n    # Fix: add React-utils header search paths[\s\S]*?    end(?=\n  end\nend)/,
+        ''
+      );
+
+      // Remove React-utils header search paths fix (OTHER_CFLAGS variant) if previously added
+      contents = contents.replace(
+        /\n\n    # Fix: add React-utils header search paths via OTHER_CFLAGS[\s\S]*?    end(?=\n  end\nend)/,
         ''
       );
 
@@ -118,22 +126,22 @@ module.exports = function withFirebaseModularHeaders(config) {
         );
       }
 
-      // 2. Add post_install fix: add React-utils header search paths to pods that
-      //    include RCTFollyConvert.h. When use_frameworks! :static is enabled,
-      //    React-utils headers (FollyConvert.h) are inside React_utils.framework.
+      // 2. Add post_install fix: add React-utils header search paths.
       //    Pods like stripe-react-native include RCTFollyConvert.h (from React-Core)
       //    which transitively includes <react/utils/FollyConvert.h> via angle-bracket
       //    imports. Since these pods don't depend on React-utils directly, their
-      //    header search paths don't include the React-utils framework headers
-      //    directory, causing: 'react/utils/FollyConvert.h' file not found.
-      //    We add the ReactCommon source path (mirroring React-utils.podspec's
-      //    HEADER_SEARCH_PATHS) to all pods that include RCTFollyConvert.h.
+      //    header search paths don't include the ReactCommon directory.
+      //    We use target_installation_results (same API as react_native_post_install's
+      //    update_search_paths) to ensure our changes are applied at the same level
+      //    as React Native's own modifications and survive xcconfig processing.
       const reactUtilsHeadersFix = `
     # Fix: add React-utils header search paths for pods that include RCTFollyConvert.h.
-    # When use_frameworks! :static is enabled, React-utils headers (FollyConvert.h)
-    # are inside React_utils.framework. Pods that include RCTFollyConvert.h
-    # transitively need <react/utils/FollyConvert.h> to resolve. This adds the
-    # ReactCommon source path (same as React-utils.podspec uses) to affected pods.
+    # Pods like stripe-react-native include RCTFollyConvert.h (from React-Core) which
+    # transitively includes <react/utils/FollyConvert.h>. Since these pods don't
+    # depend on React-utils directly, their header search paths don't include the
+    # ReactCommon directory. We use target_installation_results (same API as
+    # react_native_post_install's update_search_paths) to ensure our changes are
+    # applied at the same level as React Native's own modifications.
     react_common_path = File.join(
       File.dirname(\`node --print "require.resolve('react-native/package.json')"\`),
       'ReactCommon'
@@ -146,14 +154,22 @@ module.exports = function withFirebaseModularHeaders(config) {
       'RNFBFirestore',
       'RNFBSharedUtils',
     ]
-    installer.pods_project.targets.each do |target|
-      if folly_pods.include?(target.name)
-        target.build_configurations.each do |config|
-          search_paths = Array(config.build_settings['HEADER_SEARCH_PATHS'])
-          search_paths << "\\"\#{react_common_path}\\""
-          config.build_settings['HEADER_SEARCH_PATHS'] = search_paths.uniq
+    # Use target_installation_results (same API as update_search_paths) to ensure
+    # our changes are applied at the same level as RN's own modifications.
+    installer.target_installation_results.pod_target_installation_results.each do |pod_name, target_installation_result|
+      if folly_pods.include?(pod_name)
+        target_installation_result.native_target.build_configurations.each do |config|
+          # HEADER_SEARCH_PATHS may be a string (space-separated) or array.
+          # Handle both cases properly.
+          current = config.build_settings['HEADER_SEARCH_PATHS']
+          search_paths = current.is_a?(Array) ? current : (current || '').split
+          new_path = "\\"\#{react_common_path}\\""
+          unless search_paths.any? { |p| p.include?('ReactCommon') }
+            search_paths << new_path
+            config.build_settings['HEADER_SEARCH_PATHS'] = search_paths
+          end
         end
-        puts "  - Added React-utils header search path for \#{target.name}"
+        puts "  - Added React-utils header search path for \#{pod_name}"
       end
     end`;
 
