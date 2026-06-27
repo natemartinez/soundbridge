@@ -171,6 +171,7 @@ module.exports = function withFirebaseModularHeaders(config) {
       File.dirname(\`node --print "require.resolve('react-native/package.json')"\`),
       'ReactCommon'
     )
+    puts "  [DIAG] ReactCommon path resolved to: \#{react_common_path}"
     # Pods known to include RCTFollyConvert.h (directly or transitively)
     folly_pods = [
       'stripe-react-native',
@@ -183,15 +184,20 @@ module.exports = function withFirebaseModularHeaders(config) {
     # our changes are applied at the same level as RN's own modifications.
     installer.target_installation_results.pod_target_installation_results.each do |pod_name, target_installation_result|
       if folly_pods.include?(pod_name)
+        puts "  [DIAG] Processing \#{pod_name} for React-utils header search path..."
         target_installation_result.native_target.build_configurations.each do |config|
           # HEADER_SEARCH_PATHS may be a string (space-separated) or array.
           # Handle both cases properly.
           current = config.build_settings['HEADER_SEARCH_PATHS']
+          puts "  [DIAG]   Config \#{config.name}: current HEADER_SEARCH_PATHS = \#{current.inspect}"
           search_paths = current.is_a?(Array) ? current : (current || '').split
           new_path = "\\"\#{react_common_path}\\""
           unless search_paths.any? { |p| p.include?('ReactCommon') }
             search_paths << new_path
             config.build_settings['HEADER_SEARCH_PATHS'] = search_paths
+            puts "  [DIAG]   Added \#{new_path} to HEADER_SEARCH_PATHS"
+          else
+            puts "  [DIAG]   ReactCommon already in HEADER_SEARCH_PATHS, skipping"
           end
         end
         puts "  - Added React-utils header search path for \#{pod_name}"
@@ -228,23 +234,33 @@ module.exports = function withFirebaseModularHeaders(config) {
     # on Firebase, CocoaPods doesn't add Firebase.framework to its framework
     # search paths. We add it explicitly via FRAMEWORK_SEARCH_PATHS.
     firebase_framework_path = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase\\""
+    firebase_headers_path = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase/Firebase.framework/Headers\\""
     installer.target_installation_results.pod_target_installation_results.each do |pod_name, target_installation_result|
       if pod_name == 'RNFBFirestore'
+        puts "  [DIAG] Found RNFBFirestore target, checking build settings..."
         target_installation_result.native_target.build_configurations.each do |config|
+          puts "  [DIAG]   Config: \#{config.name}"
           # Add to FRAMEWORK_SEARCH_PATHS so <Firebase/Firebase.h> resolves
           current_fw = config.build_settings['FRAMEWORK_SEARCH_PATHS']
+          puts "  [DIAG]   Current FRAMEWORK_SEARCH_PATHS: \#{current_fw.inspect}"
           fw_search_paths = current_fw.is_a?(Array) ? current_fw : (current_fw || '').split
           unless fw_search_paths.any? { |p| p.include?('Firebase') }
             fw_search_paths << firebase_framework_path
             config.build_settings['FRAMEWORK_SEARCH_PATHS'] = fw_search_paths
+            puts "  [DIAG]   Added \#{firebase_framework_path} to FRAMEWORK_SEARCH_PATHS"
+          else
+            puts "  [DIAG]   Firebase already in FRAMEWORK_SEARCH_PATHS, skipping"
           end
           # Also add to HEADER_SEARCH_PATHS as a fallback (framework headers dir)
           current_hdr = config.build_settings['HEADER_SEARCH_PATHS']
+          puts "  [DIAG]   Current HEADER_SEARCH_PATHS: \#{current_hdr.inspect}"
           hdr_search_paths = current_hdr.is_a?(Array) ? current_hdr : (current_hdr || '').split
-          firebase_headers_path = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase/Firebase.framework/Headers\\""
           unless hdr_search_paths.any? { |p| p.include?('Firebase') }
             hdr_search_paths << firebase_headers_path
             config.build_settings['HEADER_SEARCH_PATHS'] = hdr_search_paths
+            puts "  [DIAG]   Added \#{firebase_headers_path} to HEADER_SEARCH_PATHS"
+          else
+            puts "  [DIAG]   Firebase already in HEADER_SEARCH_PATHS, skipping"
           end
         end
         puts "  - Added Firebase framework search path for RNFBFirestore"
