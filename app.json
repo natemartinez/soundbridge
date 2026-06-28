@@ -47,7 +47,11 @@
       ],
       "./plugins/withFirebaseModularHeaders.js",
       "./plugins/withJitpackExclusion.js",
-      "./plugins/withAllowNonModularIncludes.js"
+      "./plugins/withAllowNonModularIncludes.js",
+      "expo-asset",
+      "expo-font",
+      "expo-localization",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
