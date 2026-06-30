@@ -204,13 +204,21 @@ module.exports = function withFirebaseModularHeaders(config) {
           # CocoaPods sets FRAMEWORK_SEARCH_PATHS and HEADER_SEARCH_PATHS via xcconfig,
           # not in config.build_settings. If we set config.build_settings without
           # $(inherited), we override the xcconfig values and lose dependency paths.
+          # CRITICAL: Keep the build setting as a STRING, not an array. Xcode's
+          # $(inherited) expansion only works reliably when the build setting is a
+          # string. React Native's own update_search_paths and
+          # update_header_paths_if_depends_on both use string concatenation
+          # (e.g., "#{current} #{new_path}"), never arrays. If we convert to an
+          # array (via .split), $(inherited) inside an array element may not
+          # expand to include xcconfig values, causing dependency framework
+          # search paths to be lost.
           current = config.build_settings['HEADER_SEARCH_PATHS']
           puts "  [DIAG]   Config \#{config.name}: current HEADER_SEARCH_PATHS = \#{current.inspect}"
-          search_paths = current.is_a?(Array) ? current : (current || '$(inherited)').split
+          header_search_paths = current.is_a?(Array) ? current.join(' ') : (current || '$(inherited)')
           new_path = "\\"\#{react_common_path}\\""
-          unless search_paths.any? { |p| p.include?('ReactCommon') }
-            search_paths << new_path
-            config.build_settings['HEADER_SEARCH_PATHS'] = search_paths
+          unless header_search_paths.include?('ReactCommon')
+            header_search_paths = "\#{header_search_paths} \#{new_path}".strip
+            config.build_settings['HEADER_SEARCH_PATHS'] = header_search_paths
             puts "  [DIAG]   Added \#{new_path} to HEADER_SEARCH_PATHS"
           else
             puts "  [DIAG]   ReactCommon already in HEADER_SEARCH_PATHS, skipping"
@@ -262,11 +270,16 @@ module.exports = function withFirebaseModularHeaders(config) {
           puts "  [DIAG]   Config: \#{config.name}"
           # Add to FRAMEWORK_SEARCH_PATHS so <Firebase/Firebase.h> resolves
           # IMPORTANT: Use $(inherited) as default when nil, to preserve xcconfig values.
+          # CRITICAL: Keep the build setting as a STRING, not an array. Xcode's
+          # $(inherited) expansion only works reliably when the build setting is a
+          # string. If we convert to an array (via .split), $(inherited) inside
+          # an array element may not expand to include xcconfig values, causing
+          # dependency framework search paths to be lost.
           current_fw = config.build_settings['FRAMEWORK_SEARCH_PATHS']
           puts "  [DIAG]   Current FRAMEWORK_SEARCH_PATHS: \#{current_fw.inspect}"
-          fw_search_paths = current_fw.is_a?(Array) ? current_fw : (current_fw || '$(inherited)').split
-          unless fw_search_paths.any? { |p| p.include?('Firebase') }
-            fw_search_paths << firebase_framework_path
+          fw_search_paths = current_fw.is_a?(Array) ? current_fw.join(' ') : (current_fw || '$(inherited)')
+          unless fw_search_paths.include?('Firebase')
+            fw_search_paths = "\#{fw_search_paths} \#{firebase_framework_path}".strip
             config.build_settings['FRAMEWORK_SEARCH_PATHS'] = fw_search_paths
             puts "  [DIAG]   Added \#{firebase_framework_path} to FRAMEWORK_SEARCH_PATHS"
           else
@@ -274,11 +287,12 @@ module.exports = function withFirebaseModularHeaders(config) {
           end
           # Also add to HEADER_SEARCH_PATHS as a fallback (framework headers dir)
           # IMPORTANT: Use $(inherited) as default when nil, to preserve xcconfig values.
+          # CRITICAL: Keep the build setting as a STRING, not an array.
           current_hdr = config.build_settings['HEADER_SEARCH_PATHS']
           puts "  [DIAG]   Current HEADER_SEARCH_PATHS: \#{current_hdr.inspect}"
-          hdr_search_paths = current_hdr.is_a?(Array) ? current_hdr : (current_hdr || '$(inherited)').split
-          unless hdr_search_paths.any? { |p| p.include?('Firebase') }
-            hdr_search_paths << firebase_headers_path
+          hdr_search_paths = current_hdr.is_a?(Array) ? current_hdr.join(' ') : (current_hdr || '$(inherited)')
+          unless hdr_search_paths.include?('Firebase')
+            hdr_search_paths = "\#{hdr_search_paths} \#{firebase_headers_path}".strip
             config.build_settings['HEADER_SEARCH_PATHS'] = hdr_search_paths
             puts "  [DIAG]   Added \#{firebase_headers_path} to HEADER_SEARCH_PATHS"
           else
