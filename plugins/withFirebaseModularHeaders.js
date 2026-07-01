@@ -5,45 +5,31 @@ const path = require('path');
 /**
  * Configures iOS Podfile for Firebase + React Native compatibility.
  *
+ * Strategy: Instead of modifying config.build_settings on pod targets in the
+ * post_install hook (which has $(inherited) expansion issues), we modify the
+ * xcconfig files directly. CocoaPods stores per-pod build settings in xcconfig
+ * files at Pods/Target Support Files/{pod_name}/{pod_name}.xcconfig. By
+ * modifying these files directly, we avoid the $(inherited) problem entirely
+ * because we're working at the xcconfig level — the source of truth.
+ *
+ * This approach is inspired by React Native's own modify_flags_for_new_architecture
+ * which uses aggregate_target.xcconfigs to modify xcconfig files directly.
+ *
  * Problem chain:
  * 1. Firebase Swift pods (Auth, Firestore) depend on ObjC pods that don't
  *    define clang modules. Without module maps, Swift can't import them →
  *    pod install fails: "cannot yet be integrated as static libraries".
  * 2. use_frameworks! :static (set via expo-build-properties) builds ALL pods
  *    as static frameworks, which automatically generates module maps. This
- *    makes use_modular_headers! redundant and actually causes conflicts:
- *    - gRPC-Core modulemap path mismatches
- *    - Firebase/Firebase.h header resolution failures
- *    So we do NOT add use_modular_headers! here.
- * 3. RNFBApp (react-native-firebase/app) is built as a static framework module
- *    (due to use_frameworks: "static") and includes non-modular React-Core
- *    headers (RCTConvert.h, RCTBridgeModule.h, RCTEventEmitter.h). This
- *    triggers -Wnon-modular-include-in-framework-module, which is promoted
- *    to an error by -Werror. Setting CLANG_ALLOW_NON_MODULAR_INCLUDES=YES
- *    on the affected Pods targets resolves this.
- * 4. Pods like stripe-react-native include RCTFollyConvert.h which transitively
- *    includes <react/utils/FollyConvert.h> from React-utils. Since these pods
- *    don't depend on React-utils directly, their header search paths don't
- *    include the ReactCommon directory. Adding it to HEADER_SEARCH_PATHS
- *    for affected pods resolves this. We use target_installation_results
- *    (same API as react_native_post_install's update_search_paths) to ensure
- *    our changes survive CocoaPods' xcconfig processing.
- * 5. RNFBFirestore includes <Firebase/Firebase.h> (the umbrella header from
- *    the core Firebase pod) but its podspec only depends on Firebase/Firestore
- *    (a subspec), not Firebase directly. When use_frameworks! :static is set,
- *    Firebase/Firestore creates FirebaseFirestore.framework while Firebase.h
- *    lives in Firebase.framework. Since RNFBFirestore doesn't depend on
- *    Firebase directly, CocoaPods doesn't add Firebase.framework/Headers to
- *    its header search paths. We add it explicitly in the post_install hook.
- * 6. CRITICAL: When modifying FRAMEWORK_SEARCH_PATHS or HEADER_SEARCH_PATHS
- *    via config.build_settings in the post_install hook, we MUST use
- *    $(inherited) as the default when the value is nil. CocoaPods sets these
- *    build settings via xcconfig files, not in the project file's
- *    config.build_settings. If we set config.build_settings without
- *    $(inherited), we override the xcconfig values and lose dependency paths
- *    (e.g., RNFBApp.framework, FirebaseFirestore.framework). This is why
- *    React Native's own update_search_paths and update_header_paths_if_depends_on
- *    both use "$(inherited)" as the default fallback.
+ *    makes use_modular_headers! redundant and actually causes conflicts.
+ * 3. RNFBApp is built as a static framework module and includes non-modular
+ *    React-Core headers. Setting CLANG_ALLOW_NON_MODULAR_INCLUDES=YES resolves.
+ * 4. stripe-react-native includes RCTFollyConvert.h which transitively includes
+ *    <react/utils/FollyConvert.h>. We add ReactCommon to HEADER_SEARCH_PATHS
+ *    in its xcconfig file.
+ * 5. RNFBFirestore includes <Firebase/Firebase.h> but only depends on
+ *    Firebase/Firestore (subspec). We add Firebase.framework to
+ *    FRAMEWORK_SEARCH_PATHS in its xcconfig file.
  */
 module.exports = function withFirebaseModularHeaders(config) {
   return withDangerousMod(config, [
@@ -54,8 +40,7 @@ module.exports = function withFirebaseModularHeaders(config) {
 
       // --- Clean up previous approaches ---
 
-      // Remove use_modular_headers! if previously added (no longer needed;
-      // use_frameworks! :static generates module maps automatically).
+      // Remove use_modular_headers! if previously added
       contents = contents.replace(/\n\nuse_modular_headers!\n/g, '\n');
 
       // Remove selective per-pod modular headers (old approach)
@@ -64,15 +49,13 @@ module.exports = function withFirebaseModularHeaders(config) {
         ''
       );
 
-      // Remove CLANG_ALLOW_NON_MODULAR_INCLUDES block (old use_frameworks! approach).
-      // Pattern: from the "# Allow react-native-firebase" comment through the outer `    end`,
-      // using a lookahead to stop just before `  end\nend` (closing post_install + target).
+      // Remove CLANG_ALLOW_NON_MODULAR_INCLUDES block (old use_frameworks! approach)
       contents = contents.replace(
         /\n\n    # Allow react-native-firebase[\s\S]*?    end\n(?=  end\nend)/,
         '\n'
       );
 
-      // Remove gRPC fix if previously added (no longer needed without use_modular_headers!)
+      // Remove gRPC fix if previously added
       contents = contents.replace(
         /\n\n    # Fix: use_modular_headers![\s\S]*?    end(?=\n  end\nend)/,
         ''
@@ -90,53 +73,43 @@ module.exports = function withFirebaseModularHeaders(config) {
         ''
       );
 
-      // Remove React-utils header search paths fix (OTHER_CFLAGS variant) if previously added
+      // Remove React-utils header search paths fix (OTHER_CFLAGS variant)
       contents = contents.replace(
         /\n\n    # Fix: add React-utils header search paths via OTHER_CFLAGS[\s\S]*?    end(?=\n  end\nend)/,
         ''
       );
 
-      // Remove Firebase/CoreOnly header search path fix if previously added
+      // Remove Firebase/CoreOnly header search path fix
       contents = contents.replace(
         /\n\n    # Fix: add Firebase\/CoreOnly header search path[\s\S]*?    end(?=\n  end\nend)/,
         ''
       );
 
-      // Remove Firebase framework header search path fix if previously added
+      // Remove Firebase framework header search path fix
       contents = contents.replace(
         /\n\n    # Fix: add Firebase framework header search path[\s\S]*?    end(?=\n  end\nend)/,
         ''
       );
 
-      // Remove Firebase framework search path fix if previously added
+      // Remove Firebase framework search path fix
       contents = contents.replace(
         /\n\n    # Fix: add Firebase framework search path[\s\S]*?    end(?=\n  end\nend)/,
         ''
       );
 
+      // Remove the old xcconfig-based fix if previously added
+      contents = contents.replace(
+        /\n\n    # Fix: patch xcconfig files for header and framework search paths[\s\S]*?    end(?=\n  end\nend)/,
+        ''
+      );
+
       // --- Apply fixes ---
 
-      // Note: use_modular_headers! is NOT added here because use_frameworks! :static
-      // (set via expo-build-properties) already generates module maps for all pods
-      // automatically. Adding use_modular_headers! on top causes:
-      //   - gRPC-Core modulemap path conflicts
-      //   - Firebase/Firebase.h header resolution failures
-      // The gRPC-Core modulemap fix is also not needed since we don't use
-      // use_modular_headers!.
-
-      // 1. Add post_install fix: allow non-modular includes in framework modules.
-      //    When use_frameworks! :static is set, pods like RNFBApp are built as
-      //    framework modules. They include React-Core headers (RCTConvert.h,
-      //    RCTBridgeModule.h, RCTEventEmitter.h) which are not modular headers.
-      //    With -Werror,-Wnon-modular-include-in-framework-module, this breaks
-      //    the build. Setting CLANG_ALLOW_NON_MODULAR_INCLUDES=YES on the
-      //    affected targets suppresses this error.
+      // 1. CLANG_ALLOW_NON_MODULAR_INCLUDES for affected pods.
+      //    This must use installer.pods_project.targets because it's a per-target
+      //    build setting that doesn't appear in xcconfig files.
       const nonModularFix = `
     # Fix: allow non-modular includes in framework modules (RNFBApp, etc.).
-    # When use_frameworks! :static is set, pods like RNFBApp are built as
-    # framework modules but include non-modular React-Core headers. This
-    # triggers -Wnon-modular-include-in-framework-module (promoted to error
-    # by -Werror). Setting CLANG_ALLOW_NON_MODULAR_INCLUDES=YES resolves it.
     non_modular_targets = [
       'RNFBApp',
       'RNFBAuth',
@@ -160,31 +133,38 @@ module.exports = function withFirebaseModularHeaders(config) {
         );
       }
 
-      // 2. Add post_install fix: add React-utils header search paths.
-      //    Pods like stripe-react-native include RCTFollyConvert.h (from React-Core)
-      //    which transitively includes <react/utils/FollyConvert.h> via angle-bracket
-      //    imports. Since these pods don't depend on React-utils directly, their
-      //    header search paths don't include the ReactCommon directory.
-      //    We use target_installation_results (same API as react_native_post_install's
-      //    update_search_paths) to ensure our changes are applied at the same level
-      //    as React Native's own modifications and survive xcconfig processing.
-      //    IMPORTANT: We use '$(inherited)' as the default when HEADER_SEARCH_PATHS
-      //    is nil, to preserve xcconfig values from CocoaPods. Without this, we
-      //    override the xcconfig and lose dependency framework search paths.
-      const reactUtilsHeadersFix = `
-    # Fix: add React-utils header search paths for pods that include RCTFollyConvert.h.
-    # Pods like stripe-react-native include RCTFollyConvert.h (from React-Core) which
-    # transitively includes <react/utils/FollyConvert.h>. Since these pods don't
-    # depend on React-utils directly, their header search paths don't include the
-    # ReactCommon directory. We use target_installation_results (same API as
-    # react_native_post_install's update_search_paths) to ensure our changes are
-    # applied at the same level as React Native's own modifications.
+      // 2. Patch xcconfig files for header and framework search paths.
+      //    Instead of modifying config.build_settings (which has $(inherited)
+      //    expansion issues), we modify the xcconfig files directly. CocoaPods
+      //    stores per-pod build settings in xcconfig files at:
+      //      Pods/Target Support Files/{pod_name}/{pod_name}.xcconfig
+      //    By modifying these files directly, we avoid $(inherited) issues
+      //    because we're working at the xcconfig level — the source of truth.
+      //    This is the same approach React Native uses in
+      //    modify_flags_for_new_architecture (new_architecture.rb:53-59).
+      const xcconfigPatch = `
+    # Fix: patch xcconfig files for header and framework search paths.
+    # Instead of modifying config.build_settings (which has $(inherited)
+    # expansion issues), we modify the xcconfig files directly. CocoaPods
+    # stores per-pod build settings in xcconfig files at:
+    #   Pods/Target Support Files/{pod_name}/{pod_name}.xcconfig
+    # By modifying these files directly, we avoid $(inherited) issues
+    # because we're working at the xcconfig level — the source of truth.
+    installation_root = installer.config.installation_root
+    pods_target_dir = File.join(installation_root, 'Pods', 'Target Support Files')
+
+    # Resolve ReactCommon path for React-utils header fix
     react_common_path = File.join(
       File.dirname(\`node --print "require.resolve('react-native/package.json')"\`),
       'ReactCommon'
     )
-    puts "  [DIAG] ReactCommon path resolved to: \#{react_common_path}"
-    # Pods known to include RCTFollyConvert.h (directly or transitively)
+    puts "  [DIAG] ReactCommon path: \#{react_common_path}"
+
+    # Paths for Firebase framework fix
+    firebase_framework_path = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase\\""
+    firebase_headers_path = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase/Firebase.framework/Headers\\""
+
+    # Pods that need ReactCommon in HEADER_SEARCH_PATHS
     folly_pods = [
       'stripe-react-native',
       'RNFBApp',
@@ -192,121 +172,58 @@ module.exports = function withFirebaseModularHeaders(config) {
       'RNFBFirestore',
       'RNFBSharedUtils',
     ]
-    # Use target_installation_results (same API as update_search_paths) to ensure
-    # our changes are applied at the same level as RN's own modifications.
-    installer.target_installation_results.pod_target_installation_results.each do |pod_name, target_installation_result|
-      if folly_pods.include?(pod_name)
-        puts "  [DIAG] Processing \#{pod_name} for React-utils header search path..."
-        target_installation_result.native_target.build_configurations.each do |config|
-          # HEADER_SEARCH_PATHS may be a string (space-separated) or array.
-          # Handle both cases properly.
-          # IMPORTANT: Use $(inherited) as default when nil, to preserve xcconfig values.
-          # CocoaPods sets FRAMEWORK_SEARCH_PATHS and HEADER_SEARCH_PATHS via xcconfig,
-          # not in config.build_settings. If we set config.build_settings without
-          # $(inherited), we override the xcconfig values and lose dependency paths.
-          # CRITICAL: Keep the build setting as a STRING, not an array. Xcode's
-          # $(inherited) expansion only works reliably when the build setting is a
-          # string. React Native's own update_search_paths and
-          # update_header_paths_if_depends_on both use string concatenation
-          # (e.g., "#{current} #{new_path}"), never arrays. If we convert to an
-          # array (via .split), $(inherited) inside an array element may not
-          # expand to include xcconfig values, causing dependency framework
-          # search paths to be lost.
-          current = config.build_settings['HEADER_SEARCH_PATHS']
-          puts "  [DIAG]   Config \#{config.name}: current HEADER_SEARCH_PATHS = \#{current.inspect}"
-          header_search_paths = current.is_a?(Array) ? current.join(' ') : (current || '$(inherited)')
-          new_path = "\\"\#{react_common_path}\\""
-          unless header_search_paths.include?('ReactCommon')
-            header_search_paths = "\#{header_search_paths} \#{new_path}".strip
-            config.build_settings['HEADER_SEARCH_PATHS'] = header_search_paths
-            puts "  [DIAG]   Added \#{new_path} to HEADER_SEARCH_PATHS"
-          else
-            puts "  [DIAG]   ReactCommon already in HEADER_SEARCH_PATHS, skipping"
-          end
+
+    folly_pods.each do |pod_name|
+      xcconfig_path = File.join(pods_target_dir, pod_name, "\#{pod_name}.xcconfig")
+      if File.exist?(xcconfig_path)
+        puts "  [DIAG] Patching \#{pod_name}.xcconfig for ReactCommon header path..."
+        xcconfig = Xcodeproj::Config.new(xcconfig_path)
+        current = xcconfig.attributes['HEADER_SEARCH_PATHS'] || '$(inherited)'
+        unless current.include?('ReactCommon')
+          xcconfig.attributes['HEADER_SEARCH_PATHS'] = "\#{current} \\"\#{react_common_path}\\""
+          xcconfig.save_as(xcconfig_path)
+          puts "  [DIAG]   Added ReactCommon path to HEADER_SEARCH_PATHS"
+        else
+          puts "  [DIAG]   ReactCommon already in HEADER_SEARCH_PATHS, skipping"
         end
-        puts "  - Added React-utils header search path for \#{pod_name}"
+      else
+        puts "  [DIAG]   xcconfig not found at \#{xcconfig_path}, skipping"
       end
+    end
+
+    # Patch RNFBFirestore.xcconfig for Firebase framework search path
+    firestore_xcconfig_path = File.join(pods_target_dir, 'RNFBFirestore', 'RNFBFirestore.xcconfig')
+    if File.exist?(firestore_xcconfig_path)
+      puts "  [DIAG] Patching RNFBFirestore.xcconfig for Firebase framework path..."
+      xcconfig = Xcodeproj::Config.new(firestore_xcconfig_path)
+
+      # Add to FRAMEWORK_SEARCH_PATHS
+      current_fw = xcconfig.attributes['FRAMEWORK_SEARCH_PATHS'] || '$(inherited)'
+      unless current_fw.include?('Firebase')
+        xcconfig.attributes['FRAMEWORK_SEARCH_PATHS'] = "\#{current_fw} \#{firebase_framework_path}"
+        puts "  [DIAG]   Added \#{firebase_framework_path} to FRAMEWORK_SEARCH_PATHS"
+      else
+        puts "  [DIAG]   Firebase already in FRAMEWORK_SEARCH_PATHS, skipping"
+      end
+
+      # Also add to HEADER_SEARCH_PATHS as fallback
+      current_hdr = xcconfig.attributes['HEADER_SEARCH_PATHS'] || '$(inherited)'
+      unless current_hdr.include?('Firebase')
+        xcconfig.attributes['HEADER_SEARCH_PATHS'] = "\#{current_hdr} \#{firebase_headers_path}"
+        puts "  [DIAG]   Added \#{firebase_headers_path} to HEADER_SEARCH_PATHS"
+      else
+        puts "  [DIAG]   Firebase already in HEADER_SEARCH_PATHS, skipping"
+      end
+
+      xcconfig.save_as(firestore_xcconfig_path)
+    else
+      puts "  [DIAG]   RNFBFirestore.xcconfig not found, skipping"
     end`;
 
-      if (!contents.includes('React-utils header search paths')) {
+      if (!contents.includes('patch xcconfig files for header and framework search paths')) {
         contents = contents.replace(
           /(\n  end\nend\s*$)/,
-          `\n${reactUtilsHeadersFix}$1`
-        );
-      }
-
-      // 3. Add post_install fix: add Firebase framework header search path for
-      //    RNFBFirestore. RNFBFirestore.podspec depends on Firebase/Firestore
-      //    (a subspec) which depends on Firebase/CoreOnly. The Firebase/CoreOnly
-      //    subspec provides the umbrella header Firebase.h. When
-      //    use_frameworks! :static is set, CocoaPods builds Firebase as a static
-      //    framework (Firebase.framework) with Firebase.h in its Headers dir.
-      //    RNFBFirestore includes <Firebase/Firebase.h> which is a framework-style
-      //    import that resolves via FRAMEWORK_SEARCH_PATHS. Since RNFBFirestore
-      //    depends on Firebase/Firestore (not Firebase directly), CocoaPods only
-      //    adds FirebaseFirestore.framework to its framework search paths, not
-      //    Firebase.framework. We add it explicitly.
-      //    We use FRAMEWORK_SEARCH_PATHS instead of HEADER_SEARCH_PATHS because
-      //    <Firebase/Firebase.h> is a framework-style import that resolves via
-      //    framework search paths when modules/frameworks are enabled.
-      //    IMPORTANT: We use '$(inherited)' as the default when FRAMEWORK_SEARCH_PATHS
-      //    or HEADER_SEARCH_PATHS is nil, to preserve xcconfig values from CocoaPods.
-      //    Without this, we override the xcconfig and lose dependency framework
-      //    search paths (e.g., RNFBApp.framework, FirebaseFirestore.framework).
-      const firebaseFrameworkFix = `
-    # Fix: add Firebase framework search path for RNFBFirestore.
-    # RNFBFirestore depends on Firebase/Firestore (subspec) which depends on
-    # Firebase/CoreOnly. When use_frameworks! :static is set, Firebase is built
-    # as Firebase.framework with Firebase.h in its Headers directory. Since
-    # RNFBFirestore includes <Firebase/Firebase.h> but doesn't directly depend
-    # on Firebase, CocoaPods doesn't add Firebase.framework to its framework
-    # search paths. We add it explicitly via FRAMEWORK_SEARCH_PATHS.
-    firebase_framework_path = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase\\""
-    firebase_headers_path = "\\"\${PODS_CONFIGURATION_BUILD_DIR}/Firebase/Firebase.framework/Headers\\""
-    installer.target_installation_results.pod_target_installation_results.each do |pod_name, target_installation_result|
-      if pod_name == 'RNFBFirestore'
-        puts "  [DIAG] Found RNFBFirestore target, checking build settings..."
-        target_installation_result.native_target.build_configurations.each do |config|
-          puts "  [DIAG]   Config: \#{config.name}"
-          # Add to FRAMEWORK_SEARCH_PATHS so <Firebase/Firebase.h> resolves
-          # IMPORTANT: Use $(inherited) as default when nil, to preserve xcconfig values.
-          # CRITICAL: Keep the build setting as a STRING, not an array. Xcode's
-          # $(inherited) expansion only works reliably when the build setting is a
-          # string. If we convert to an array (via .split), $(inherited) inside
-          # an array element may not expand to include xcconfig values, causing
-          # dependency framework search paths to be lost.
-          current_fw = config.build_settings['FRAMEWORK_SEARCH_PATHS']
-          puts "  [DIAG]   Current FRAMEWORK_SEARCH_PATHS: \#{current_fw.inspect}"
-          fw_search_paths = current_fw.is_a?(Array) ? current_fw.join(' ') : (current_fw || '$(inherited)')
-          unless fw_search_paths.include?('Firebase')
-            fw_search_paths = "\#{fw_search_paths} \#{firebase_framework_path}".strip
-            config.build_settings['FRAMEWORK_SEARCH_PATHS'] = fw_search_paths
-            puts "  [DIAG]   Added \#{firebase_framework_path} to FRAMEWORK_SEARCH_PATHS"
-          else
-            puts "  [DIAG]   Firebase already in FRAMEWORK_SEARCH_PATHS, skipping"
-          end
-          # Also add to HEADER_SEARCH_PATHS as a fallback (framework headers dir)
-          # IMPORTANT: Use $(inherited) as default when nil, to preserve xcconfig values.
-          # CRITICAL: Keep the build setting as a STRING, not an array.
-          current_hdr = config.build_settings['HEADER_SEARCH_PATHS']
-          puts "  [DIAG]   Current HEADER_SEARCH_PATHS: \#{current_hdr.inspect}"
-          hdr_search_paths = current_hdr.is_a?(Array) ? current_hdr.join(' ') : (current_hdr || '$(inherited)')
-          unless hdr_search_paths.include?('Firebase')
-            hdr_search_paths = "\#{hdr_search_paths} \#{firebase_headers_path}".strip
-            config.build_settings['HEADER_SEARCH_PATHS'] = hdr_search_paths
-            puts "  [DIAG]   Added \#{firebase_headers_path} to HEADER_SEARCH_PATHS"
-          else
-            puts "  [DIAG]   Firebase already in HEADER_SEARCH_PATHS, skipping"
-          end
-        end
-        puts "  - Added Firebase framework search path for RNFBFirestore"
-      end
-    end`;
-
-      if (!contents.includes('Firebase framework search path for RNFBFirestore')) {
-        contents = contents.replace(
-          /(\n  end\nend\s*$)/,
-          `\n${firebaseFrameworkFix}$1`
+          `\n${xcconfigPatch}$1`
         );
       }
 
