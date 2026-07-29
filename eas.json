@@ -18,14 +18,13 @@
       },
       "env": {
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_...",
-        "EXPO_PUBLIC_FIREBASE_FUNCTIONS_URL": "...",
-        "EXPO_PUBLIC_FIREBASE_API_KEY": "...",
-        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "...",
-        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "...",
-        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "...",
-        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "...",
-        "EXPO_PUBLIC_FIREBASE_APP_ID": "...",
-        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "..."
+        "EXPO_PUBLIC_FIREBASE_FUNCTIONS_URL": "https://us-central1-gig-app-16877.cloudfunctions.net",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCfkZ4dRCvg8qJ1c2GxmW7ZRZzEwC6vNlI",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "gig-app-16877.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "gig-app-16877",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "gig-app-16877.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "830687592109",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:830687592109:ios:6555b6076bb3fd27585024"
       }
     }
   },

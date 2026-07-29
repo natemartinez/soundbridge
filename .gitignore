@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# lockfiles - we use pnpm, not npm
+package-lock.json
+
 # Expo
 .expo/
 dist/
