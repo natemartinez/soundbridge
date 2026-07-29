@@ -2,15 +2,16 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
-// pnpm with node-linker=hoisted copies actual package files to node_modules/<pkg>
-// (no symlinks). The .pnpm/ virtual store is redundant for Metro's resolver.
-// Blocking it prevents Metro from watching thousands of extra directories and
-// avoids the ENOSPC inotify watcher limit on Linux.
 config.resolver.blockList = [
-  // pnpm virtual store — not needed with hoisted linker
-  /node_modules\/\.pnpm\/.*/,
-  // Nested node_modules inside packages — Metro resolves from the root
-  /node_modules\/.*\/node_modules\/.*/,
+  // NOTE: Do NOT block /node_modules\/\.pnpm\/.*/ here — pnpm uses symlinks
+  // from node_modules/<pkg> -> .pnpm/<pkg>@version/node_modules/<pkg>. Metro
+  // resolves symlinks to their real path, and blocking .pnpm/ would prevent
+  // Metro from resolving packages accessed through those symlinks.
+  //
+  // Also do NOT block /node_modules\/.*\/node_modules\/.*/ — the .pnpm store
+  // structure (node_modules/.pnpm/<pkg>/node_modules/<pkg>) matches this pattern
+  // and would block the same symlinked packages.
+  //
   // Firebase Cloud Functions — has its own package.json with "main": "lib/index.js"
   // which confuses Metro into serving /lib/index.bundle instead of /index.bundle
   /functions\/.*/,
